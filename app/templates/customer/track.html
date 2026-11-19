@@ -1,0 +1,87 @@
+{% extends "customer/layout.html" %}
+{% block title %}Lacak Pesanan — PrintKilat{% endblock %}
+
+{% block customer_content %}
+<div class="container pt-4 pb-5" style="max-width: 860px;">
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <a href="{{ url_for('customer.home') }}" class="btn btn-outline-secondary rounded-3 pk-touch-target d-flex align-items-center justify-content-center" aria-label="Kembali">
+      <i class="bi bi-arrow-left"></i>
+    </a>
+    <div>
+      <h1 class="h4 fw-extrabold mb-0">Lacak Status Pesanan</h1>
+      <p class="small text-secondary mb-0">Masukkan kode pelacakan unik Anda (PK-TRK-XXXXXXXX).</p>
+    </div>
+  </div>
+
+  <form method="GET" action="{{ url_for('customer.track') }}" class="pk-card p-4 mb-4">
+    <label for="kodeInput" class="form-label small fw-bold">Kode Pelacakan</label>
+    <div class="d-flex flex-column flex-sm-row gap-2">
+      <input id="kodeInput" name="kode" type="text" value="{{ code }}" class="form-control pk-touch-target font-mono-tabular fw-bold rounded-3" placeholder="PK-TRK-XXXXXXXX" required />
+      <button type="submit" class="btn pk-btn-primary px-4 rounded-3">Lacak Pesanan</button>
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-center mt-3 small">
+      <span class="text-secondary">Contoh / Tersimpan:</span>
+      {% for sc in saved_codes %}
+        <a href="{{ url_for('customer.track', kode=sc) }}" class="badge text-decoration-none pk-callout-ivory text-dark font-mono-tabular px-2 py-2">{{ sc }}</a>
+      {% endfor %}
+    </div>
+  </form>
+
+  {% if order %}
+    <div class="pk-card p-4 mb-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 pb-3 mb-3 border-bottom">
+        <div>
+          <div class="small text-secondary">Nomor Antrean Gerai</div>
+          <div class="d-flex align-items-center gap-2 mt-1">
+            <h2 class="h3 fw-extrabold font-mono-tabular mb-0">{{ order.queue_number }}</h2>
+            <span class="pk-status-pill pk-status-{{ order.status }}">{{ STATUS_LABELS[order.status] }}</span>
+          </div>
+          <div class="small font-mono-tabular text-secondary mt-1">Kode Lacak: {{ order.tracking_code }}</div>
+        </div>
+        <a href="{{ url_for('customer.track', kode=order.tracking_code) }}" class="btn btn-sm btn-outline-secondary rounded-3">
+          <i class="bi bi-arrow-clockwise me-1"></i> Segarkan
+        </a>
+      </div>
+
+      {% if order.status == 'rejected' %}
+        <div class="alert alert-danger mb-0">
+          <strong>Pesanan Ditolak Operator:</strong> {{ order.rejection_reason or 'Berkas tidak dapat diproses.' }}
+        </div>
+      {% else %}
+        <div class="row g-2">
+          {% for step in order_steps %}
+            {% set idx = loop.index0 %}
+            <div class="col-6 col-md">
+              <div class="p-2 rounded-3 border {% if idx == current_step_idx %}pk-callout-ivory border-warning{% elif idx < current_step_idx %}bg-warning bg-opacity-10 border-warning-subtle{% else %}bg-light{% endif %}">
+                <div class="small fw-bold">
+                  {{ loop.index }}. {{ SHORT_STATUS_LABELS[step] }}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="pk-card p-4 small">
+      <h3 class="h6 fw-bold mb-3">Rincian Pesanan</h3>
+      <div class="d-flex justify-content-between mb-2">
+        <span class="text-secondary">Berkas</span>
+        <span class="fw-semibold">{{ order.file.original_name }} ({{ order.file.file_size_bytes|filesize }})</span>
+      </div>
+      <div class="d-flex justify-content-between mb-2">
+        <span class="text-secondary">Spesifikasi</span>
+        <span class="fw-semibold">{{ order.item.print_tariff_name }} · {{ order.item.page_count }} hlm · {{ order.item.copies }} rangkap</span>
+      </div>
+      <div class="d-flex justify-content-between mb-2">
+        <span class="text-secondary">Jilid</span>
+        <span class="fw-semibold">{{ order.item.bind_tariff_name }}</span>
+      </div>
+      <div class="d-flex justify-content-between pt-2 border-top">
+        <span class="fw-bold">Total Biaya</span>
+        <span class="fw-extrabold font-mono-tabular fs-6" style="color: var(--pk-orange-hover);">{{ order.total_amount|rupiah }}</span>
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,116 @@
+{% extends "operator/layout.html" %}
+{% block title %}{{ order.queue_number }} — Detail Operator{% endblock %}
+
+{% block operator_content %}
+<div class="mb-4">
+  <a href="{{ url_for('operator.queue') }}" class="text-decoration-none fw-semibold small" style="color: var(--pk-orange-hover);">
+    <i class="bi bi-arrow-left me-1"></i> Kembali ke antrean
+  </a>
+  <div class="d-flex flex-wrap align-items-center gap-3 mt-2">
+    <h1 class="h3 fw-extrabold font-mono-tabular mb-0">{{ order.queue_number }}</h1>
+    <span class="pk-status-pill pk-status-{{ order.status }}">{{ STATUS_LABELS[order.status] }}</span>
+    <span class="small font-mono-tabular text-secondary">Kode Lacak: {{ order.tracking_code }}</span>
+  </div>
+</div>
+
+<div class="row g-4 align-items-start">
+  <div class="col-12 col-lg-6">
+    <section class="pk-card p-4 mb-3 small">
+      <div class="d-flex justify-content-between py-2 border-bottom">
+        <span class="text-secondary">Pelanggan</span>
+        <span class="fw-semibold">{{ order.customer_name }}{% if order.customer_phone %} · {{ order.customer_phone }}{% endif %}</span>
+      </div>
+      <div class="d-flex justify-content-between py-2 border-bottom">
+        <span class="text-secondary">File</span>
+        <span class="fw-semibold">{{ order.file.original_name }} · {{ order.file.file_size_bytes|filesize }}</span>
+      </div>
+      <div class="d-flex justify-content-between py-2 border-bottom">
+        <span class="text-secondary">Spesifikasi</span>
+        <span class="fw-semibold">{{ order.item.print_tariff_name }} · {{ order.item.page_count }} hlm · {{ order.item.copies }} rangkap</span>
+      </div>
+      <div class="d-flex justify-content-between py-2 border-bottom">
+        <span class="text-secondary">Jilid</span>
+        <span class="fw-semibold">{{ order.item.bind_tariff_name }}</span>
+      </div>
+      <div class="d-flex justify-content-between py-2 border-bottom">
+        <span class="text-secondary">Catatan</span>
+        <span class="fw-semibold">{{ order.notes or '—' }}</span>
+      </div>
+      <div class="d-flex justify-content-between align-items-baseline pt-3">
+        <span class="fw-bold">Total</span>
+        <span class="h5 fw-extrabold font-mono-tabular mb-0" style="color: var(--pk-orange-hover);">{{ order.total_amount|rupiah }}</span>
+      </div>
+    </section>
+
+    <div class="mb-3">
+      {% if order.file.deleted_at %}
+        <span class="small text-secondary">Berkas telah dihapus sesuai retensi 7 hari.</span>
+      {% else %}
+        <a href="{{ url_for('operator.download_file', order_id=order.id) }}" class="btn pk-btn-outline rounded-3">
+          <i class="bi bi-download me-1"></i> Unduh file
+        </a>
+      {% endif %}
+    </div>
+
+    <div class="pk-callout-ivory p-3 small">
+      <i class="bi bi-exclamation-circle me-1" style="color: var(--pk-orange-hover);"></i>
+      Cocokkan jumlah halaman pada file ({{ order.file.detected_pages or order.item.page_count }} hlm) dengan pesanan sebelum mengubah status ke Sedang Dicetak.
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-6 d-flex flex-column gap-4">
+    <section class="pk-card p-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="h6 fw-bold mb-0">Pembayaran</h2>
+        <span class="badge {% if order.payment.status == 'paid' %}text-bg-success{% else %}text-bg-warning{% endif %}">
+          {{ 'Lunas' if order.payment.status == 'paid' else ('Menunggu verifikasi' if order.payment.status == 'pending_verification' else 'Belum Lunas') }}
+        </span>
+      </div>
+      <p class="small text-secondary">Metode: <strong class="text-dark">{{ 'Transfer / QRIS' if order.payment.method == 'transfer' else 'Tunai di tempat' }}</strong></p>
+      {% if order.payment.method == 'transfer' %}
+        <div class="border rounded-3 p-3 text-center bg-light mb-3">
+          {% if order.payment.proof_stored_name %}
+            <img src="{{ url_for('operator.view_payment_proof', order_id=order.id) }}" alt="Bukti Transfer" class="img-fluid rounded" style="max-height: 220px;" />
+          {% else %}
+            <span class="small text-secondary">Pratinjau bukti transfer belum diunggah</span>
+          {% endif %}
+        </div>
+      {% endif %}
+      {% if order.payment.status != 'paid' %}
+        <form method="POST" action="{{ url_for('operator.mark_paid', order_id=order.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <button type="submit" class="btn pk-btn-primary w-100 rounded-3">Tandai lunas</button>
+        </form>
+      {% endif %}
+    </section>
+
+    <section class="pk-card p-4">
+      <h2 class="h6 fw-bold mb-3">Ubah status</h2>
+      {% if next_statuses %}
+        <form method="POST" action="{{ url_for('operator.update_status', order_id=order.id) }}" class="mb-3">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <label for="statusSelect" class="form-label small fw-semibold text-secondary">Status berikutnya</label>
+          <div class="d-flex gap-2">
+            <select id="statusSelect" name="status" class="form-select pk-touch-target rounded-3">
+              {% for st in next_statuses %}
+                <option value="{{ st }}">{{ STATUS_LABELS[st] }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn pk-btn-primary px-4 rounded-3">Simpan</button>
+          </div>
+        </form>
+      {% endif %}
+
+      {% if can_reject %}
+        <form method="POST" action="{{ url_for('operator.update_status', order_id=order.id) }}" class="pt-3 border-top">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <input type="hidden" name="status" value="rejected" />
+          <label for="rejectReasonInput" class="form-label small fw-semibold text-secondary">Alasan penolakan (wajib jika ditolak)</label>
+          <input id="rejectReasonInput" name="rejection_reason" type="text" class="form-control pk-touch-target rounded-3 mb-2" placeholder="Contoh: file rusak atau tidak terbaca" required />
+          <button type="submit" class="btn btn-outline-danger rounded-3">Tolak pesanan</button>
+        </form>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

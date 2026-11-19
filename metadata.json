@@ -1,0 +1,6 @@
+{
+  "name": "PrintKilat",
+  "description": "Sistem antrean cetak dan kirim berkas fotokopi kampus berbasis web yang cepat, transparan, dan bebas antre fisik.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,51 @@
+{% extends "customer/layout.html" %}
+{% block title %}Daftar Harga — PrintKilat{% endblock %}
+
+{% block customer_content %}
+<div class="container pt-4 pb-5" style="max-width: 920px;">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div class="d-flex align-items-center gap-3">
+      <a href="{{ url_for('customer.home') }}" class="btn btn-outline-secondary rounded-3 pk-touch-target d-flex align-items-center justify-content-center" aria-label="Kembali">
+        <i class="bi bi-arrow-left"></i>
+      </a>
+      <div>
+        <h1 class="h4 fw-extrabold mb-0">Daftar Harga Gerai</h1>
+        <p class="small text-secondary mb-0">Tarif resmi cetak dan jilid yang aktif saat ini.</p>
+      </div>
+    </div>
+    <a href="{{ url_for('customer.create_order') }}" class="btn pk-btn-primary rounded-3">Buat Pesanan</a>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-12 col-md-6">
+      <section class="pk-card p-4 h-100">
+        <h2 class="h6 fw-bold mb-3"><i class="bi bi-printer me-2" style="color: var(--pk-orange-dark);"></i>Layanan Cetak (per halaman)</h2>
+        <ul class="list-group list-group-flush">
+          {% for t in print_tariffs %}
+            <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+              <div>
+                <div class="fw-semibold small">{{ t.name }}</div>
+                <div class="small text-secondary">Kertas {{ t.paper_size or '-' }}</div>
+              </div>
+              <span class="font-mono-tabular fw-bold small" style="color: var(--pk-orange-hover);">{{ t.price|rupiah }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    </div>
+    <div class="col-12 col-md-6">
+      <section class="pk-card p-4 h-100">
+        <h2 class="h6 fw-bold mb-3"><i class="bi bi-journal-bookmark me-2" style="color: var(--pk-orange-dark);"></i>Layanan Jilid (per rangkap)</h2>
+        <ul class="list-group list-group-flush">
+          {% for b in bind_tariffs %}
+            <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+              <div class="fw-semibold small">{{ b.name }}</div>
+              <span class="font-mono-tabular fw-bold small" style="color: var(--pk-orange-hover);">{{ b.price|rupiah }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    </div>
+  </div>
+</div>
+{% endblock %}

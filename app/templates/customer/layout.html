@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block body %}
+<nav class="navbar navbar-expand-md pk-topbar sticky-top border-bottom border-white border-opacity-25">
+  <div class="container">
+    <a class="navbar-brand text-white fw-extrabold" href="{{ url_for('customer.home') }}">PrintKilat</a>
+    <div class="d-none d-md-flex align-items-center gap-4">
+      <a class="nav-link text-white fw-medium {% if request.endpoint == 'customer.home' %}text-decoration-underline{% endif %}" href="{{ url_for('customer.home') }}">Beranda</a>
+      <a class="nav-link text-white fw-medium {% if request.endpoint == 'customer.create_order' %}text-decoration-underline{% endif %}" href="{{ url_for('customer.create_order') }}">Buat Pesanan</a>
+      <a class="nav-link text-white fw-medium {% if request.endpoint == 'customer.track' %}text-decoration-underline{% endif %}" href="{{ url_for('customer.track') }}">Lacak Pesanan</a>
+      <a class="nav-link text-white fw-medium {% if request.endpoint == 'customer.tariffs' %}text-decoration-underline{% endif %}" href="{{ url_for('customer.tariffs') }}">Daftar Harga</a>
+      <a class="nav-link text-white fw-medium {% if request.endpoint == 'customer.history' %}text-decoration-underline{% endif %}" href="{{ url_for('customer.history') }}">Riwayat</a>
+    </div>
+    <a href="{{ url_for('customer.entry') }}" class="btn btn-sm btn-outline-light fw-semibold rounded-3">Keluar</a>
+  </div>
+</nav>
+
+<main class="pb-5 mb-4">
+  {% block customer_content %}{% endblock %}
+</main>
+
+{% if not hide_bottom_nav %}
+<nav class="pk-mobile-bottom-nav d-md-none" aria-label="Navigasi Bawah">
+  <div class="row g-0 text-center">
+    <a href="{{ url_for('customer.home') }}" class="col d-flex flex-column justify-content-center align-items-center {% if request.endpoint == 'customer.home' %}active{% endif %}">
+      <i class="bi bi-house fs-5"></i><span>Beranda</span>
+    </a>
+    <a href="{{ url_for('customer.create_order') }}" class="col d-flex flex-column justify-content-center align-items-center {% if request.endpoint == 'customer.create_order' %}active{% endif %}">
+      <i class="bi bi-file-earmark-plus fs-5"></i><span>Pesan</span>
+    </a>
+    <a href="{{ url_for('customer.track') }}" class="col d-flex flex-column justify-content-center align-items-center {% if request.endpoint == 'customer.track' %}active{% endif %}">
+      <i class="bi bi-clock fs-5"></i><span>Lacak</span>
+    </a>
+    <a href="{{ url_for('customer.tariffs') }}" class="col d-flex flex-column justify-content-center align-items-center {% if request.endpoint in ('customer.tariffs', 'customer.history') %}active{% endif %}">
+      <i class="bi bi-receipt fs-5"></i><span>Tarif</span>
+    </a>
+  </div>
+</nav>
+{% endif %}
+{% endblock %}

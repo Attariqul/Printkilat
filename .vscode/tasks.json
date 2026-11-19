@@ -1,0 +1,18 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "PrintKilat: Run Flask Server",
+      "type": "shell",
+      "command": "python run.py",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "PrintKilat: Run Pytest",
+      "type": "shell",
+      "command": "pytest -v",
+      "problemMatcher": []
+    }
+  ]
+}

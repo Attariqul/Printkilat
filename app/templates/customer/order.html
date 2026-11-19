@@ -1,0 +1,152 @@
+{% extends "customer/layout.html" %}
+{% set hide_bottom_nav = True %}
+{% block title %}Buat Pesanan — PrintKilat{% endblock %}
+
+{% block customer_content %}
+<form id="createOrderForm" method="POST" action="{{ url_for('customer.create_order') }}" enctype="multipart/form-data" class="container pt-4 pb-5">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <a href="{{ url_for('customer.home') }}" class="btn btn-outline-secondary rounded-3 pk-touch-target d-flex align-items-center justify-content-center" aria-label="Kembali">
+      <i class="bi bi-arrow-left"></i>
+    </a>
+    <div>
+      <h1 class="h4 fw-extrabold mb-0">Buat Pesanan</h1>
+      <p class="small text-secondary mb-0">Unggah dokumen dan atur spesifikasi cetakmu.</p>
+    </div>
+  </div>
+
+  <div class="row g-4 align-items-start">
+    <div class="col-12 col-lg-7">
+      <div class="pk-card p-4 d-flex flex-column gap-3">
+        <!-- Upload Dropzone -->
+        <div>
+          <label for="documentInput" class="form-label small fw-bold">Dokumen Cetak</label>
+          <label for="documentInput" class="pk-dropzone p-3 d-flex align-items-center gap-3 w-100">
+            <div class="rounded-3 bg-white border p-2 px-3" style="color: var(--pk-orange-dark);">
+              <i class="bi bi-cloud-arrow-up fs-3"></i>
+            </div>
+            <div class="min-w-0">
+              <div id="selectedFileTitle" class="fw-bold small text-dark text-truncate">Pilih atau unggah dokumen</div>
+              <div id="selectedFileMeta" class="small text-secondary">PDF, DOC, DOCX · maks. 20 MB</div>
+            </div>
+          </label>
+          <input id="documentInput" name="document" type="file" accept=".pdf,.doc,.docx" class="d-none" required />
+        </div>
+
+        <!-- Jenis Cetak -->
+        <div>
+          <label for="printTariffSelect" class="form-label small fw-bold">Jenis cetak</label>
+          <select id="printTariffSelect" name="print_tariff_id" class="form-select pk-touch-target rounded-3">
+            {% for t in print_tariffs %}
+              <option value="{{ t.id }}" data-price="{{ t.price }}">{{ t.name }} · {{ t.price|rupiah }}/halaman</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Halaman & Rangkap Stepper -->
+        <div class="row g-3">
+          <div class="col-6">
+            <label for="pageCountInput" class="form-label small fw-bold">Halaman</label>
+            <input id="pageCountInput" name="page_count" type="number" min="1" max="2000" value="1" class="form-control pk-touch-target font-mono-tabular fw-bold rounded-3" required />
+          </div>
+          <div class="col-6">
+            <label for="copiesInput" class="form-label small fw-bold">Rangkap</label>
+            <div class="input-group">
+              <button type="button" id="minusCopiesBtn" class="btn btn-outline-secondary pk-touch-target" aria-label="Kurangi rangkap">
+                <i class="bi bi-dash"></i>
+              </button>
+              <input id="copiesInput" name="copies" type="number" min="1" max="200" value="1" class="form-control text-center font-mono-tabular fw-bold pk-touch-target" required />
+              <button type="button" id="plusCopiesBtn" class="btn btn-outline-secondary pk-touch-target" aria-label="Tambah rangkap">
+                <i class="bi bi-plus"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Jilid -->
+        <div>
+          <label for="bindTariffSelect" class="form-label small fw-bold">Jilid</label>
+          <select id="bindTariffSelect" name="bind_tariff_id" class="form-select pk-touch-target rounded-3">
+            {% for b in bind_tariffs %}
+              <option value="{{ b.id }}" data-price="{{ b.price }}" data-name="{{ b.name }}">{{ b.name }} · {{ b.price|rupiah }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Catatan -->
+        <div>
+          <label for="notesInput" class="form-label small fw-bold">Catatan untuk operator</label>
+          <input id="notesInput" name="notes" type="text" class="form-control pk-touch-target rounded-3" placeholder="Contoh: Cetak bolak-balik" />
+        </div>
+
+        <!-- Kontak Opsional -->
+        <div class="row g-3 pt-2 border-top">
+          <div class="col-sm-6">
+            <label for="customerNameInput" class="form-label small fw-semibold text-secondary">Nama panggilan (opsional)</label>
+            <input id="customerNameInput" name="customer_name" type="text" class="form-control pk-touch-target rounded-3" placeholder="Mis. Andi" />
+          </div>
+          <div class="col-sm-6">
+            <label for="customerPhoneInput" class="form-label small fw-semibold text-secondary">No. WhatsApp (opsional)</label>
+            <input id="customerPhoneInput" name="customer_phone" type="tel" class="form-control pk-touch-target rounded-3" placeholder="08xx-xxxx-xxxx" />
+          </div>
+        </div>
+
+        <!-- Pembayaran -->
+        <div>
+          <span class="form-label small fw-bold d-block">Pembayaran</span>
+          <div class="btn-group w-100" role="group">
+            <input type="radio" class="btn-check" name="payment_method" id="payCash" value="cash" checked />
+            <label class="btn btn-outline-warning text-dark fw-semibold pk-touch-target d-flex align-items-center justify-content-center" for="payCash">Tunai di tempat</label>
+
+            <input type="radio" class="btn-check" name="payment_method" id="payTransfer" value="transfer" />
+            <label class="btn btn-outline-warning text-dark fw-semibold pk-touch-target d-flex align-items-center justify-content-center" for="payTransfer">Transfer / QRIS</label>
+          </div>
+          <div id="transferInfoBox" class="pk-callout-ivory p-3 mt-3 d-none">
+            <div class="small fw-bold mb-1"><i class="bi bi-qr-code me-1"></i> Rekening / QRIS Gerai</div>
+            <div class="small text-secondary mb-2">{{ transfer_info }}</div>
+            <label for="proofInput" class="form-label small fw-semibold">Unggah bukti transfer (opsional)</label>
+            <input id="proofInput" name="payment_proof" type="file" accept="image/*" class="form-control form-control-sm" />
+          </div>
+        </div>
+
+        <p class="small text-secondary mb-0">
+          <i class="bi bi-shield-check me-1" style="color: var(--pk-orange-dark);"></i>
+          File hanya dilihat operator dan dihapus otomatis setelah 7 hari.
+        </p>
+      </div>
+    </div>
+
+    <!-- Desktop Sticky Summary -->
+    <div class="col-lg-5 d-none d-lg-block">
+      <div class="pk-card p-4 position-sticky" style="top: 5rem;">
+        <h2 class="h6 fw-bold mb-3">Ringkasan Biaya</h2>
+        <div class="d-flex justify-content-between small text-secondary mb-2">
+          <span id="summaryPrintLabel">1 hlm × Rp 500 × 1 rangkap</span>
+          <span id="summaryPrintValue" class="font-mono-tabular fw-semibold text-dark">Rp 500</span>
+        </div>
+        <div class="d-flex justify-content-between small text-secondary mb-3">
+          <span id="summaryBindLabel">Tanpa jilid (1 rangkap)</span>
+          <span id="summaryBindValue" class="font-mono-tabular fw-semibold text-dark">Rp 0</span>
+        </div>
+        <div class="d-flex justify-content-between align-items-baseline pt-3 border-top mb-4">
+          <span class="fw-bold">Estimasi total</span>
+          <span id="desktopTotalValue" class="h4 fw-extrabold font-mono-tabular mb-0" style="color: var(--pk-orange-hover);">Rp 500</span>
+        </div>
+        <button type="submit" class="btn pk-btn-primary w-100 rounded-3">Kirim Pesanan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Sticky Bottom CTA -->
+  <div class="pk-sticky-checkout d-lg-none px-3 py-2">
+    <div class="container d-flex justify-content-between align-items-center gap-3">
+      <div>
+        <div id="mobileSummaryMeta" class="small text-secondary">1 hlm · 1 rangkap</div>
+        <div id="mobileTotalValue" class="h5 fw-extrabold font-mono-tabular mb-0" style="color: var(--pk-orange-hover);">Rp 500</div>
+      </div>
+      <button type="submit" class="btn pk-btn-primary px-4 rounded-3">Kirim Pesanan</button>
+    </div>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block body %}
+<nav class="navbar pk-topbar sticky-top border-bottom border-white border-opacity-25">
+  <div class="container">
+    <a class="navbar-brand text-white fw-extrabold" href="{{ url_for('operator.queue') }}">PrintKilat · Operator</a>
+    <div class="d-flex align-items-center gap-2 gap-md-3">
+      <a href="{{ url_for('operator.queue') }}" class="btn btn-sm text-white fw-semibold {% if request.endpoint == 'operator.queue' %}bg-white bg-opacity-25{% endif %}">Antrean</a>
+      <a href="{{ url_for('operator.manage_tariffs') }}" class="btn btn-sm text-white fw-semibold {% if request.endpoint == 'operator.manage_tariffs' %}bg-white bg-opacity-25{% endif %}">Kelola Tarif</a>
+      <a href="{{ url_for('operator.history') }}" class="btn btn-sm text-white fw-semibold {% if request.endpoint == 'operator.history' %}bg-white bg-opacity-25{% endif %}">Riwayat</a>
+      <button type="button" class="btn btn-sm text-white fw-semibold" data-bs-toggle="modal" data-bs-target="#operatorLogoutModal">Keluar</button>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-4">
+  {% block operator_content %}{% endblock %}
+</main>
+
+<!-- Logout Confirmation Modal -->
+<div class="modal fade" id="operatorLogoutModal" tabindex="-1" aria-labelledby="operatorLogoutLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-body p-4">
+        <div class="rounded-3 d-inline-flex align-items-center justify-content-center mb-3" style="width: 44px; height: 44px; background: #FFF7ED; color: var(--pk-orange-dark);">
+          <i class="bi bi-box-arrow-right fs-5"></i>
+        </div>
+        <h2 class="h5 fw-bold" id="operatorLogoutLabel">Keluar dari akun operator?</h2>
+        <p class="small text-secondary mb-4">
+          Anda perlu masuk lagi dengan email dan kata sandi untuk mengelola antrean. Pesanan yang sedang berjalan tidak terpengaruh.
+        </p>
+        <div class="d-flex justify-content-end gap-2">
+          <button type="button" class="btn btn-outline-secondary rounded-3" data-bs-dismiss="modal">Batal</button>
+          <form method="POST" action="{{ url_for('auth.logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <button type="submit" class="btn pk-btn-primary rounded-3">Ya, keluar</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "operator/layout.html" %}
+{% block title %}Riwayat Operator — PrintKilat{% endblock %}
+
+{% block operator_content %}
+<h1 class="h4 fw-extrabold mb-3">Riwayat Pesanan</h1>
+<div class="pk-card overflow-hidden">
+  {% if orders %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 small">
+        <thead class="table-light text-secondary">
+          <tr>
+            <th>Antrean</th>
+            <th>Pelanggan</th>
+            <th>Dokumen</th>
+            <th class="text-end">Total</th>
+            <th>Status</th>
+            <th class="text-end">Aksi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for o in orders %}
+            <tr>
+              <td class="font-mono-tabular fw-bold">{{ o.queue_number }}</td>
+              <td>{{ o.customer_name }}</td>
+              <td>{{ o.file.original_name }}</td>
+              <td class="text-end font-mono-tabular fw-semibold">{{ o.total_amount|rupiah }}</td>
+              <td><span class="pk-status-pill pk-status-{{ o.status }}">{{ SHORT_STATUS_LABELS[o.status] }}</span></td>
+              <td class="text-end"><a href="{{ url_for('operator.order_detail', order_id=o.id) }}" class="btn btn-sm btn-outline-secondary rounded-3">Detail</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="p-5 text-center text-secondary small">Belum ada riwayat pesanan selesai atau ditolak.</div>
+  {% endif %}
+</div>
+{% endblock %}

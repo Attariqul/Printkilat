@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Masuk — PrintKilat{% endblock %}
+
+{% block body %}
+<header class="pk-hero-band pt-5 pb-5 text-center">
+  <div class="container pb-3">
+    <div class="d-inline-flex align-items-center justify-content-center rounded-4 border border-white border-opacity-25 bg-white bg-opacity-15 mb-3" style="width: 56px; height: 56px;">
+      <i class="bi bi-printer fs-2 text-white"></i>
+    </div>
+    <h1 class="fw-bolder mb-2">PrintKilat</h1>
+    <p class="mb-0 text-white text-opacity-75 mx-auto" style="max-width: 460px;">
+      Kirim file cetak dari kelas atau kos, ambil di gerai fotokopi kampus tanpa antre fisik.
+    </p>
+  </div>
+</header>
+
+<main class="container pb-5" style="margin-top: -2rem;">
+  <div class="row g-4 align-items-stretch">
+    <!-- Pelanggan (Guest-First) -->
+    <div class="col-12 col-lg-7">
+      <section class="pk-card p-4 p-md-5 h-100 d-flex flex-column justify-content-between shadow-sm">
+        <div>
+          <p class="small fw-semibold text-uppercase mb-2" style="color: var(--pk-orange-hover);">
+            <i class="bi bi-person-check me-1"></i> Akses Mahasiswa &amp; Umum
+          </p>
+          <h2 class="h3 fw-bold mb-2">Pelanggan</h2>
+          <p class="text-secondary">
+            Tidak perlu daftar atau buat akun. Unggah dokumen PDF/DOCX, lihat estimasi harga otomatis, lalu simpan kode pelacakan untuk memantau progres cetak.
+          </p>
+          <div class="row g-3 pt-3 mt-3 border-top">
+            <div class="col-4">
+              <div class="small text-secondary">Tanpa Daftar</div>
+              <div class="small fw-bold">Langsung Pesan</div>
+            </div>
+            <div class="col-4">
+              <div class="small text-secondary">Format Berkas</div>
+              <div class="small fw-bold">PDF, DOC, DOCX</div>
+            </div>
+            <div class="col-4">
+              <div class="small text-secondary">Privasi Aman</div>
+              <div class="small fw-bold">Hapus 7 Hari</div>
+            </div>
+          </div>
+        </div>
+        <div class="mt-4 pt-2">
+          <a href="{{ url_for('customer.home') }}" class="btn pk-btn-primary w-100 rounded-3 d-flex align-items-center justify-content-center gap-2">
+            <span>Lanjut sebagai Tamu</span>
+            <i class="bi bi-arrow-right"></i>
+          </a>
+        </div>
+      </section>
+    </div>
+
+    <!-- Operator Fotokopi -->
+    <div class="col-12 col-lg-5">
+      <section class="pk-card p-4 p-md-5 h-100 d-flex flex-column justify-content-between shadow-sm">
+        <div>
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="small fw-semibold text-secondary"><i class="bi bi-lock me-1"></i> Khusus Petugas Gerai</span>
+            <button type="button" id="fillDemoOperatorBtn" class="btn btn-link btn-sm p-0 fw-semibold" style="color: var(--pk-orange-hover);">
+              Isi akun demo
+            </button>
+          </div>
+          <h2 class="h4 fw-bold mb-3">Operator fotokopi</h2>
+
+          <form method="POST" action="{{ url_for('auth.login') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <div class="mb-3">
+              <label for="operatorEmail" class="form-label small fw-semibold">Email</label>
+              <input type="email" id="operatorEmail" name="email" class="form-control pk-touch-target rounded-3" placeholder="operator@printkilat.id" required />
+            </div>
+            <div class="mb-4">
+              <label for="operatorPassword" class="form-label small fw-semibold">Kata sandi</label>
+              <input type="password" id="operatorPassword" name="password" class="form-control pk-touch-target rounded-3" placeholder="Masukkan kata sandi" required />
+            </div>
+            <button type="submit" class="btn pk-btn-outline w-100 rounded-3">
+              Masuk sebagai Operator
+            </button>
+          </form>
+        </div>
+        <p class="small text-secondary mt-3 mb-0">
+          Demo petugas: <code class="text-dark">operator@printkilat.id</code> · sandi <code class="text-dark">printkilat123</code>
+        </p>
+      </section>
+    </div>
+  </div>
+</main>
+{% endblock %}

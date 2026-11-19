@@ -1,0 +1,17 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+data/
+instance/
+protected_uploads/
+.playwright-cli/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/

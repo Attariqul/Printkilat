@@ -1,0 +1,16 @@
+Flask==3.0.3
+Werkzeug==3.1.9
+Jinja2==3.1.4
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy==2.0.36
+PyMySQL==1.1.1
+Flask-Migrate==4.0.7
+alembic==1.14.0
+Flask-Login==0.6.3
+Flask-WTF==1.2.1
+WTForms==3.2.1
+cryptography==43.0.1
+python-dotenv==1.0.1
+pytest==8.3.3
+pypdf==5.1.0
+tzdata==2024.1

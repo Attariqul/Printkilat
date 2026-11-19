@@ -1,0 +1,38 @@
+{% extends "customer/layout.html" %}
+{% block title %}Riwayat Pesanan — PrintKilat{% endblock %}
+
+{% block customer_content %}
+<div class="container pt-4 pb-5" style="max-width: 860px;">
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <a href="{{ url_for('customer.home') }}" class="btn btn-outline-secondary rounded-3 pk-touch-target d-flex align-items-center justify-content-center" aria-label="Kembali">
+      <i class="bi bi-arrow-left"></i>
+    </a>
+    <div>
+      <h1 class="h4 fw-extrabold mb-0">Riwayat Pesanan</h1>
+      <p class="small text-secondary mb-0">Pesanan yang dibuat atau dilacak pada sesi ini.</p>
+    </div>
+  </div>
+
+  {% if orders %}
+    <div class="d-flex flex-column gap-3">
+      {% for o in orders %}
+        <a href="{{ url_for('customer.track', kode=o.tracking_code) }}" class="pk-card p-3 p-md-4 text-decoration-none text-dark d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2">
+          <div>
+            <div class="d-flex align-items-center gap-2">
+              <span class="font-mono-tabular fw-bold">{{ o.queue_number }}</span>
+              <span class="small font-mono-tabular text-secondary">{{ o.tracking_code }}</span>
+            </div>
+            <div class="small text-secondary mt-1">{{ o.file.original_name }} · <strong class="text-dark font-mono-tabular">{{ o.total_amount|rupiah }}</strong></div>
+          </div>
+          <span class="pk-status-pill pk-status-{{ o.status }}">{{ SHORT_STATUS_LABELS[o.status] }}</span>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="pk-card p-4 text-center">
+      <p class="fw-semibold mb-2">Belum ada riwayat pesanan.</p>
+      <a href="{{ url_for('customer.create_order') }}" class="btn pk-btn-primary rounded-3">Buat Pesanan Pertama</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

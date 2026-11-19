@@ -1,0 +1,24 @@
+{
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["tests"],
+  "editor.tabSize": 4,
+  "editor.insertSpaces": true,
+  "files.associations": {
+    "*.html": "jinja-html"
+  },
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/.playwright-cli": true,
+    "**/dist": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/.venv": true,
+    "**/instance": true,
+    "**/protected_uploads": true,
+    "**/.playwright-cli": true
+  }
+}

@@ -1,0 +1,88 @@
+{% extends "operator/layout.html" %}
+{% block title %}Antrean Operator — PrintKilat{% endblock %}
+
+{% block operator_content %}
+<div class="row g-3 mb-4">
+  <div class="col-12 col-md-4">
+    <div class="pk-card p-4">
+      <div class="h2 fw-extrabold font-mono-tabular mb-1">{{ counts.pending }}</div>
+      <div class="small text-secondary">Menunggu konfirmasi</div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="pk-card p-4">
+      <div class="h2 fw-extrabold font-mono-tabular mb-1" style="color: var(--pk-orange-hover);">{{ counts.confirmed_printing }}</div>
+      <div class="small text-secondary">Dikonfirmasi &amp; dicetak</div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="pk-card p-4">
+      <div class="h2 fw-extrabold font-mono-tabular text-success mb-1">{{ counts.ready }}</div>
+      <div class="small text-secondary">Siap diambil</div>
+    </div>
+  </div>
+</div>
+
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-3">
+  <div class="btn-group flex-wrap" role="group">
+    <a href="{{ url_for('operator.queue', status='all', q=search_q) }}" class="btn btn-sm {% if status_filter == 'all' %}pk-btn-primary{% else %}btn-outline-secondary{% endif %}">Semua Aktif</a>
+    <a href="{{ url_for('operator.queue', status='pending', q=search_q) }}" class="btn btn-sm {% if status_filter == 'pending' %}pk-btn-primary{% else %}btn-outline-secondary{% endif %}">Menunggu</a>
+    <a href="{{ url_for('operator.queue', status='confirmed', q=search_q) }}" class="btn btn-sm {% if status_filter == 'confirmed' %}pk-btn-primary{% else %}btn-outline-secondary{% endif %}">Dikonfirmasi</a>
+    <a href="{{ url_for('operator.queue', status='printing', q=search_q) }}" class="btn btn-sm {% if status_filter == 'printing' %}pk-btn-primary{% else %}btn-outline-secondary{% endif %}">Dicetak</a>
+    <a href="{{ url_for('operator.queue', status='ready', q=search_q) }}" class="btn btn-sm {% if status_filter == 'ready' %}pk-btn-primary{% else %}btn-outline-secondary{% endif %}">Siap Diambil</a>
+  </div>
+
+  <form method="GET" action="{{ url_for('operator.queue') }}" class="d-flex gap-2">
+    <input type="hidden" name="status" value="{{ status_filter }}" />
+    <input type="search" name="q" value="{{ search_q }}" class="form-control form-control-sm rounded-3" placeholder="Cari antrean, nama, file..." />
+    <button type="submit" class="btn btn-sm btn-outline-secondary rounded-3">Cari</button>
+  </form>
+</div>
+
+<div class="pk-card overflow-hidden">
+  {% if orders %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light small text-secondary">
+          <tr>
+            <th>Antrean</th>
+            <th>Pelanggan</th>
+            <th>Dokumen &amp; Spesifikasi</th>
+            <th>Pembayaran</th>
+            <th class="text-end">Total</th>
+            <th>Status</th>
+            <th class="text-end">Aksi</th>
+          </tr>
+        </thead>
+        <tbody class="small">
+          {% for o in orders %}
+            <tr>
+              <td class="font-mono-tabular fw-bold text-nowrap">{{ o.queue_number }}</td>
+              <td>
+                <div class="fw-semibold">{{ o.customer_name }}</div>
+                {% if o.customer_phone %}<div class="text-secondary font-mono-tabular">{{ o.customer_phone }}</div>{% endif %}
+              </td>
+              <td>
+                <div class="fw-medium">{{ o.file.original_name }}</div>
+                <div class="text-secondary">{{ o.item.print_tariff_name }} · {{ o.item.page_count }} hlm · {{ o.item.copies }} rangkap</div>
+              </td>
+              <td>
+                <span class="badge {% if o.payment.status == 'paid' %}text-bg-success{% elif o.payment.status == 'pending_verification' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">
+                  {{ 'Lunas' if o.payment.status == 'paid' else ('Menunggu verifikasi' if o.payment.status == 'pending_verification' else 'Bayar di gerai') }}
+                </span>
+              </td>
+              <td class="text-end font-mono-tabular fw-bold text-nowrap">{{ o.total_amount|rupiah }}</td>
+              <td><span class="pk-status-pill pk-status-{{ o.status }}">{{ SHORT_STATUS_LABELS[o.status] }}</span></td>
+              <td class="text-end">
+                <a href="{{ url_for('operator.order_detail', order_id=o.id) }}" class="btn btn-sm pk-btn-primary rounded-3">Proses</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="p-5 text-center text-secondary small">Tidak ada pesanan aktif pada filter ini.</div>
+  {% endif %}
+</div>
+{% endblock %}
