@@ -1,120 +1,196 @@
 # PrintKilat
 
-**Sistem antrean cetak dan pengiriman dokumen berbasis web** untuk layanan fotokopi dan percetakan, dikembangkan sebagai proyek Rekayasa Perangkat Lunak dengan studi kasus Berkah Fotocopy.
+**PrintKilat** adalah aplikasi web pemesanan layanan cetak dan jilid dokumen, dengan portal pelanggan dan portal operator untuk mengelola antrean pesanan.
 
-PrintKilat memungkinkan pelanggan memesan cetakan tanpa membuat akun, mengunggah dokumen, melihat estimasi biaya, memilih metode pembayaran, dan melacak pesanan. Operator mengelola antrean melalui portal yang terlindungi autentikasi Google.
+## Fitur
 
-## Fitur Utama
+- Pemesanan dokumen dari portal pelanggan.
+- Pengunggahan file dokumen dan deteksi jumlah halaman PDF.
+- Pilihan tarif cetak dan jilid serta kalkulasi total.
+- Nomor antrean dan kode pelacakan pesanan.
+- Pelacakan status pesanan.
+- Portal operator untuk pengelolaan antrean dan pesanan.
+- Verifikasi pembayaran dan pengelolaan tarif.
 
-### Portal pelanggan (guest-first)
-- Pemesanan tanpa registrasi akun.
-- Unggah file PDF, DOC, dan DOCX (maksimum 20 MB).
-- Deteksi jumlah halaman PDF otomatis di browser.
-- Pilihan spesifikasi cetak dan kalkulasi estimasi biaya.
-- Metode pembayaran tunai, QR/QRIS, atau transfer bank; bukti pembayaran diperlukan untuk pembayaran non-tunai.
-- Nomor antrean harian (`PK-YYYYMMDD-NNN`), kode pelacakan rahasia (`PK-TRK-XXXXXXXX`), dan QR Code.
-- Pelacakan status pesanan tanpa login.
+## Diagram Alur Pesanan
 
-### Portal operator
-- Login menggunakan Google melalui Firebase Authentication.
-- Dashboard antrean, pencarian/filter, dan detail pesanan.
-- Akses kontak privat, dokumen, dan bukti pembayaran untuk operator terverifikasi.
-- Verifikasi pembayaran dan pengelolaan status pesanan.
-- Penolakan pesanan dengan alasan.
-- Pengelolaan tarif dan pengaturan pembayaran gerai (QRIS/rekening bank).
+```mermaid
+flowchart TD
+    A["Pelanggan membuka PrintKilat"] --> B["Mengisi detail pesanan"]
+    B --> C["Mengunggah dokumen"]
+    C --> D["Memilih layanan cetak / jilid"]
+    D --> E["Sistem menghitung estimasi total"]
+    E --> F["Pesanan dibuat"]
+    F --> G["Nomor antrean dan kode pelacakan"]
+    G --> H["Operator memeriksa pesanan"]
+    H --> I{"Pesanan diterima?"}
+    I -- Ya --> J["Confirmed"]
+    J --> K["Printing"]
+    K --> L["Ready"]
+    L --> M["Completed"]
+    I -- Tidak --> N["Rejected dengan alasan"]
+```
 
-## Alur Status Pesanan
+## Diagram Arsitektur Sistem
+
+```mermaid
+flowchart TD
+    C["Pelanggan"] --> UI["Web UI / Jinja Templates"]
+    O["Operator"] --> UI
+    UI --> FL["Flask Application"]
+    FL --> AUTH["Authentication / Flask-Login"]
+    FL --> BP["Blueprints: Customer, Operator, Auth"]
+    BP --> ORM["SQLAlchemy ORM"]
+    ORM --> DB["Database (MySQL-compatible)"]
+    FL --> FS["Protected File Storage"]
+```
+
+## Diagram Entitas (ERD Ringkas)
+
+```mermaid
+erDiagram
+    OPERATORS ||--o{ ORDER_STATUS_LOGS : records
+    OPERATORS ||--o{ PAYMENT_RECORDS : verifies
+    ORDERS ||--|| ORDER_ITEMS : contains
+    ORDERS ||--|| ORDER_FILES : stores
+    ORDERS ||--|| PAYMENT_RECORDS : has
+    ORDERS ||--o{ ORDER_STATUS_LOGS : tracks
+    SERVICE_TARIFFS ||--o{ ORDER_ITEMS : print_tariff
+    SERVICE_TARIFFS ||--o{ ORDER_ITEMS : bind_tariff
+
+    OPERATORS {
+        int id PK
+        string email
+        string name
+        string role
+    }
+    SERVICE_TARIFFS {
+        int id PK
+        string name
+        string category
+        int price
+        boolean is_active
+    }
+    ORDERS {
+        int id PK
+        string queue_number
+        string tracking_code
+        string status
+        int total_amount
+    }
+    ORDER_ITEMS {
+        int id PK
+        int order_id FK
+        int print_tariff_id FK
+        int bind_tariff_id FK
+        int page_count
+        int copies
+    }
+    ORDER_FILES {
+        int id PK
+        int order_id FK
+        string original_name
+        int file_size_bytes
+    }
+    PAYMENT_RECORDS {
+        int id PK
+        int order_id FK
+        string method
+        string status
+    }
+    ORDER_STATUS_LOGS {
+        int id PK
+        int order_id FK
+        int operator_id FK
+        string status
+    }
+```
+
+## Status Pesanan
+
 `pending` → `confirmed` → `printing` → `ready` → `completed`
 
-Pesanan dapat ditolak (`rejected`) dengan alasan penolakan yang wajib dicantumkan.
+Status `rejected` juga tersedia, dengan alasan penolakan.
 
 ## Teknologi
 
 | Komponen | Teknologi |
 |---|---|
-| Frontend | React 19, TypeScript |
-| Build | Vite 8 |
-| Styling | Tailwind CSS v4 |
-| Server | Node.js 22, Express |
-| Database | Cloud Firestore |
-| Autentikasi operator | Firebase Authentication (Google) |
-| Pemrosesan PDF | pdf-lib |
-| QR Code | qrcode |
-| Pengujian | node:test |
-| Keamanan | Firestore Security Rules, ESLint |
+| Backend | Python, Flask 3 |
+| Template | Jinja2 |
+| ORM | Flask-SQLAlchemy, SQLAlchemy |
+| Database driver | PyMySQL |
+| Database migration | Flask-Migrate, Alembic |
+| Authentication | Flask-Login |
+| Form & CSRF | Flask-WTF, WTForms |
+| PDF | pypdf |
+| Testing | pytest |
+| Konfigurasi | python-dotenv |
 
-## Arsitektur Ringkas
-- Aplikasi Single Page Application (SPA) React + TypeScript.
-- Express/Vite menyediakan aplikasi pada port 3000.
-- Integrasi Firestore dan Firebase Authentication.
-- Berkas pelanggan disimpan dalam chunk terpisah; ukuran chunk nominal 450 KB dan dibatasi hingga 60 chunk.
-- Data kontak pelanggan disimpan di area privat, terpisah dari data pesanan yang dapat diakses melalui kode pelacakan.
-- Retensi berkas pesanan dirancang selama 7 hari.
+## Struktur Proyek
 
-## Instalasi dan Menjalankan secara Lokal
+| Path | Fungsi |
+|---|---|
+| `app/__init__.py` | Application factory dan registrasi blueprint |
+| `app/models.py` | Model database |
+| `app/blueprints/customer.py` | Rute dan proses portal pelanggan |
+| `app/blueprints/operator.py` | Rute pengelolaan pesanan operator |
+| `app/blueprints/auth.py` | Autentikasi operator |
+| `app/templates/` | Template antarmuka |
+| `app/static/` | CSS dan JavaScript |
+| `app/extensions.py` | Inisialisasi extension |
+| `app/seed.py` | Data awal |
+| `config.py` | Konfigurasi aplikasi |
+| `requirements.txt` | Dependensi Python |
 
-> Pastikan Node.js versi yang sesuai (Node.js 22) dan npm telah terpasang.
+## Menjalankan secara Lokal
 
 1. Clone repository:
+
    ```bash
    git clone https://github.com/Attariqul/Printkilat.git
    cd Printkilat
    ```
-2. Instal dependensi:
+
+2. Buat virtual environment:
+
    ```bash
-   npm install
-   ```
-3. Konfigurasikan Firebase sesuai konfigurasi proyek dan instruksi pada source code. Jangan commit kredensial, private key, atau data pelanggan ke repository.
-4. Jalankan aplikasi (gunakan script yang tersedia pada `package.json`):
-   ```bash
-   npm run dev
+   python -m venv .venv
    ```
 
-Jika script pengembangan pada repository menggunakan perintah berbeda, ikuti script yang tercantum di `package.json`.
+3. Aktifkan virtual environment:
 
-## Pengujian dan Validasi
+   **Windows:**
+   ```bash
+   .venv\Scripts\activate
+   ```
 
-Perintah yang digunakan dalam verifikasi proyek:
+   **Linux/macOS:**
+   ```bash
+   source .venv/bin/activate
+   ```
 
-```bash
-npm test
-npx tsc --noEmit
-npm run build
-npx eslint firestore.rules
-```
+4. Instal dependensi:
 
-Hasil pengujian yang dicatat dalam laporan proyek:
-- Unit test logika inti: **11/11 skenario lulus**.
-- TypeScript: **0 galat**.
-- Build produksi: **berhasil**.
-- Audit Firestore Rules dengan ESLint: **0 galat**.
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+5. Siapkan konfigurasi environment sesuai `config.py` dan `.env.example`. Jangan memasukkan credential, secret, atau data pelanggan ke Git.
+
+6. Jalankan aplikasi sesuai entry point dan konfigurasi deployment pada repository.
 
 ## Keamanan dan Privasi
-- Pelanggan tidak perlu login untuk memesan atau melacak pesanan.
-- Portal operator memerlukan autentikasi dan otorisasi operator.
-- Firestore Rules membatasi akses terhadap pesanan, kontak, bukti pembayaran, dan file.
-- Dokumen dan kontak pelanggan merupakan data sensitif: jangan gunakan data nyata dalam demo, issue, atau commit publik.
-- Retensi file dirancang 7 hari; pastikan mekanisme penghapusan otomatis benar-benar dikonfigurasi pada deployment.
 
-## Struktur Modul (ringkasan)
-
-| Path | Tanggung jawab |
-|---|---|
-| `src/shared/printLogic.ts` | Logika tarif, validasi unggahan, kode pelacakan, chunking, dan transisi status |
-| `src/lib/firebase.ts` | Inisialisasi Firebase, Firestore, dan autentikasi |
-| `src/utils/api.ts` | Operasi Firestore, antrean, unggah chunk, pembayaran, dan autentikasi operator |
-| `src/components/` | Antarmuka pelanggan dan operator |
-| `firestore.rules` | Aturan keamanan database |
-| `server.ts`, `vite.config.ts` | Server Express/Vite dan konfigurasi aplikasi |
+- Akses portal operator dilindungi autentikasi.
+- Dokumen pelanggan disimpan pada lokasi penyimpanan terlindungi sesuai konfigurasi aplikasi.
+- Jangan membagikan berkas pesanan, bukti pembayaran, credential, atau informasi pribadi pelanggan pada repository publik.
+- Konfigurasi penyimpanan dan retensi file perlu diverifikasi pada lingkungan deployment.
 
 ## Konteks Proyek
 
-Proyek ini dirancang berdasarkan studi lapangan pada Berkah Fotocopy, Desa Reuleut Timu, Kecamatan Muara Batu, pada November 2026. Sistem ditujukan untuk membantu pengelolaan antrean, mengurangi kesalahan spesifikasi, menyediakan estimasi biaya yang transparan, serta meningkatkan pengelolaan privasi dokumen.
-
-## Status
-
-Proyek akademik Rekayasa Perangkat Lunak — implementasi dan pengujian tercatat dalam laporan proyek.
+PrintKilat dikembangkan sebagai proyek akademik dengan studi kasus layanan fotokopi dan percetakan, untuk membantu proses pemesanan, pengelolaan antrean, tarif layanan, dan status pekerjaan.
 
 ---
 
-**Catatan:** README ini merupakan ringkasan dokumentasi proyek. Detail implementasi, konfigurasi deployment, dan status fitur aktual merujuk pada source code repository.
+> Dokumentasi ini merupakan ringkasan. Untuk rincian implementasi dan konfigurasi, lihat source code repository.
