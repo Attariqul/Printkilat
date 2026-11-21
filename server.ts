@@ -29,6 +29,7 @@ async function startServer(): Promise<void> {
       server: {
         middlewareMode: true,
         hmr: process.env.DISABLE_HMR !== 'true',
+        allowedHosts: true,
       },
       appType: 'spa',
     });
