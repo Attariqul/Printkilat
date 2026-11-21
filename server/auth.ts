@@ -1,12 +1,33 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import crypto from 'node:crypto';
 import type { Request, Response, NextFunction } from 'express';
 
 const SESSION_COOKIE_NAME = 'pk_operator_session';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours
 
-// Ephemeral fallback secret if env var is absent in local dev
-const SESSION_SECRET =
-  process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+function resolveSessionSecret(): string {
+  if (process.env.SESSION_SECRET) {
+    return process.env.SESSION_SECRET;
+  }
+  const isServerless = Boolean(process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME);
+  const baseDir = isServerless ? '/tmp/printkilat' : process.cwd();
+  const secretPath = path.resolve(baseDir, 'data', '.session_secret');
+  try {
+    if (fs.existsSync(secretPath)) {
+      const existing = fs.readFileSync(secretPath, 'utf8').trim();
+      if (existing.length >= 32) return existing;
+    }
+    fs.mkdirSync(path.dirname(secretPath), { recursive: true });
+    const generated = crypto.randomBytes(32).toString('hex');
+    fs.writeFileSync(secretPath, generated, { mode: 0o600 });
+    return generated;
+  } catch {
+    return crypto.randomBytes(32).toString('hex');
+  }
+}
+
+const SESSION_SECRET = resolveSessionSecret();
 
 export interface OperatorSessionPayload {
   operatorId: number;
@@ -69,22 +90,41 @@ export function verifyOperatorToken(token: string | undefined): OperatorSessionP
   }
 }
 
+function isHttpsRequest(res: Response): boolean {
+  const req = res.req;
+  if (!req) return false;
+  return Boolean(req.secure || req.get('x-forwarded-proto') === 'https');
+}
+
 export function setOperatorCookie(res: Response, token: string): void {
+  const https = isHttpsRequest(res);
   res.cookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite: https ? 'none' : 'lax',
+    secure: https,
     path: '/',
     maxAge: SESSION_TTL_MS,
   });
 }
 
 export function clearOperatorCookie(res: Response): void {
-  res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
+  const https = isHttpsRequest(res);
+  res.clearCookie(SESSION_COOKIE_NAME, {
+    path: '/',
+    sameSite: https ? 'none' : 'lax',
+    secure: https,
+  });
 }
 
 export function getOperatorFromRequest(req: Request): OperatorSessionPayload | null {
-  const token = req.cookies?.[SESSION_COOKIE_NAME] as string | undefined;
-  return verifyOperatorToken(token);
+  const authHeader = req.get('authorization');
+  if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+    const bearerToken = authHeader.slice(7).trim();
+    const fromHeader = verifyOperatorToken(bearerToken);
+    if (fromHeader) return fromHeader;
+  }
+  const cookieToken = req.cookies?.[SESSION_COOKIE_NAME] as string | undefined;
+  return verifyOperatorToken(cookieToken);
 }
 
 export function requireOperatorAuth(req: Request, res: Response, next: NextFunction): void {

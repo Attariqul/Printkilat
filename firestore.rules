@@ -1,0 +1,419 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 1 / Safety Net: Default-deny all paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerified() && request.auth.token.email == 'asuikontol48@gmail.com';
+    }
+
+    function isOperator() {
+      return isBootstrappedAdmin()
+        || (isVerified() && exists(/databases/$(database)/documents/operators/$(request.auth.uid)));
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidTrackingCode(code) {
+      return code is string
+        && code.size() >= 10
+        && code.size() <= 32
+        && code.matches('^PK-TRK-[A-Z0-9]+$');
+    }
+
+    function isValidDateKey(dateKey) {
+      return dateKey is string && dateKey.size() == 8 && dateKey.matches('^[0-9]{8}$');
+    }
+
+    function isOptionalString(val, maxLen) {
+      return val == null || (val is string && val.size() <= maxLen);
+    }
+
+    function isOptionalNumber(val) {
+      return val == null || val is number;
+    }
+
+    // --- Entity Validation Blueprints ---
+    function isValidTariff(data) {
+      return data.keys().hasAll(['name', 'category', 'paperSize', 'colorMode', 'price', 'isActive', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['name', 'category', 'paperSize', 'colorMode', 'price', 'isActive', 'createdAt', 'updatedAt'])
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 100
+        && data.category in ['cetak', 'jilid']
+        && (data.paperSize == null || data.paperSize in ['A4', 'F4'])
+        && (data.colorMode == null || data.colorMode in ['BW', 'Color'])
+        && data.price is number && data.price >= 0 && data.price <= 10000000
+        && data.isActive is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Immutable canonical default tariff seed guard (only exact canonical IDs & prices)
+    function isCanonicalDefaultTariff(tariffId, data) {
+      return isValidTariff(data)
+        && data.isActive == true
+        && data.createdAt == request.time
+        && data.updatedAt == request.time
+        && (
+          (tariffId == 'cetak-bw-a4' && data.name == 'Print Hitam Putih A4' && data.category == 'cetak' && data.paperSize == 'A4' && data.colorMode == 'BW' && data.price == 500)
+          || (tariffId == 'cetak-color-a4' && data.name == 'Print Warna A4' && data.category == 'cetak' && data.paperSize == 'A4' && data.colorMode == 'Color' && data.price == 1500)
+          || (tariffId == 'cetak-bw-f4' && data.name == 'Print Hitam Putih F4' && data.category == 'cetak' && data.paperSize == 'F4' && data.colorMode == 'BW' && data.price == 600)
+          || (tariffId == 'cetak-color-f4' && data.name == 'Print Warna F4' && data.category == 'cetak' && data.paperSize == 'F4' && data.colorMode == 'Color' && data.price == 2000)
+          || (tariffId == 'jilid-tanpa' && data.name == 'Tanpa jilid' && data.category == 'jilid' && data.paperSize == null && data.colorMode == null && data.price == 0)
+          || (tariffId == 'jilid-lakban' && data.name == 'Jilid Lakban' && data.category == 'jilid' && data.paperSize == null && data.colorMode == null && data.price == 3000)
+          || (tariffId == 'jilid-spiral' && data.name == 'Jilid Spiral' && data.category == 'jilid' && data.paperSize == null && data.colorMode == null && data.price == 8000)
+        );
+    }
+
+    function isValidPaymentSettings(data) {
+      return data.keys().hasAll([
+          'qrEnabled', 'qrLabel', 'qrImageBase64', 'qrImageMimeType', 'qrImageOriginalName',
+          'bankEnabled', 'bankName', 'bankAccountNumber', 'bankAccountHolder', 'paymentNote',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'qrEnabled', 'qrLabel', 'qrImageBase64', 'qrImageMimeType', 'qrImageOriginalName',
+          'bankEnabled', 'bankName', 'bankAccountNumber', 'bankAccountHolder', 'paymentNote',
+          'updatedAt'
+        ])
+        && data.qrEnabled is bool
+        && data.qrLabel is string && data.qrLabel.size() <= 100
+        && isOptionalString(data.qrImageBase64, 750000)
+        && isOptionalString(data.qrImageMimeType, 100)
+        && isOptionalString(data.qrImageOriginalName, 255)
+        && data.bankEnabled is bool
+        && data.bankName is string && data.bankName.size() <= 60
+        && data.bankAccountNumber is string && data.bankAccountNumber.size() <= 60
+        && data.bankAccountHolder is string && data.bankAccountHolder.size() <= 100
+        && isOptionalString(data.paymentNote, 300)
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidOrderItem(item) {
+      return item is map
+        && item.keys().hasAll([
+          'printTariffId', 'printTariffName', 'paperSize', 'colorMode',
+          'printUnitPrice', 'pageCount', 'copies',
+          'bindTariffId', 'bindTariffName', 'bindUnitPrice',
+          'subtotalPrint', 'subtotalBind'
+        ])
+        && item.keys().hasOnly([
+          'printTariffId', 'printTariffName', 'paperSize', 'colorMode',
+          'printUnitPrice', 'pageCount', 'copies',
+          'bindTariffId', 'bindTariffName', 'bindUnitPrice',
+          'subtotalPrint', 'subtotalBind'
+        ])
+        && isValidId(item.printTariffId)
+        && item.printTariffName is string && item.printTariffName.size() >= 1 && item.printTariffName.size() <= 100
+        && (item.paperSize == null || item.paperSize in ['A4', 'F4'])
+        && (item.colorMode == null || item.colorMode in ['BW', 'Color'])
+        && item.printUnitPrice is number && item.printUnitPrice >= 0
+        && item.pageCount is int && item.pageCount >= 1 && item.pageCount <= 2000
+        && item.copies is int && item.copies >= 1 && item.copies <= 200
+        && (item.bindTariffId == null || isValidId(item.bindTariffId))
+        && item.bindTariffName is string && item.bindTariffName.size() >= 1 && item.bindTariffName.size() <= 100
+        && item.bindUnitPrice is number && item.bindUnitPrice >= 0
+        && item.subtotalPrint is number && item.subtotalPrint >= 0
+        && item.subtotalBind is number && item.subtotalBind >= 0
+        && item.subtotalPrint == item.printUnitPrice * item.pageCount * item.copies
+        && item.subtotalBind == item.bindUnitPrice * item.copies;
+    }
+
+    function isValidOrderFile(file) {
+      return file is map
+        && file.keys().hasAll(['originalName', 'mimeType', 'fileSizeBytes', 'detectedPages', 'chunkCount', 'deletedAt'])
+        && file.keys().hasOnly(['originalName', 'mimeType', 'fileSizeBytes', 'detectedPages', 'chunkCount', 'deletedAt'])
+        && file.originalName is string && file.originalName.size() >= 1 && file.originalName.size() <= 255
+        && file.mimeType is string && file.mimeType.size() >= 1 && file.mimeType.size() <= 150
+        && file.fileSizeBytes is int && file.fileSizeBytes >= 1 && file.fileSizeBytes <= 20971520
+        && isOptionalNumber(file.detectedPages)
+        && file.chunkCount is int && file.chunkCount >= 1 && file.chunkCount <= 60
+        && (file.deletedAt == null || file.deletedAt is timestamp);
+    }
+
+    function isValidOrderPayment(payment) {
+      return payment is map
+        && payment.keys().hasAll(['method', 'status', 'hasProof', 'proofOriginalName', 'verifiedAt'])
+        && payment.keys().hasOnly(['method', 'status', 'hasProof', 'proofOriginalName', 'verifiedAt'])
+        && payment.method in ['cash', 'qr', 'transfer']
+        && payment.status in ['unpaid', 'pending_verification', 'paid']
+        && payment.hasProof is bool
+        && isOptionalString(payment.proofOriginalName, 255)
+        && (payment.verifiedAt == null || payment.verifiedAt is timestamp);
+    }
+
+    function isValidOrderSchema(data, trackingCode) {
+      return data.keys().hasAll([
+          'queueNumber', 'trackingCode', 'customerName', 'status',
+          'rejectionReason', 'notes', 'totalAmount',
+          'item', 'file', 'payment', 'statusLogs',
+          'createdAt', 'updatedAt', 'fileExpiresAt'
+        ])
+        && data.keys().hasOnly([
+          'queueNumber', 'trackingCode', 'customerName', 'status',
+          'rejectionReason', 'notes', 'totalAmount',
+          'item', 'file', 'payment', 'statusLogs',
+          'createdAt', 'updatedAt', 'fileExpiresAt'
+        ])
+        && data.queueNumber is string && data.queueNumber.size() >= 10 && data.queueNumber.size() <= 32
+        && data.queueNumber.matches('^PK-[0-9]{8}-[0-9]{3,}$')
+        && data.trackingCode == trackingCode
+        && data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 100
+        && data.status in ['pending', 'confirmed', 'printing', 'ready', 'completed', 'rejected']
+        && isOptionalString(data.rejectionReason, 500)
+        && isOptionalString(data.notes, 500)
+        && data.totalAmount is number && data.totalAmount >= 0 && data.totalAmount <= 1000000000
+        && isValidOrderItem(data.item)
+        && data.totalAmount == data.item.subtotalPrint + data.item.subtotalBind
+        && isValidOrderFile(data.file)
+        && isValidOrderPayment(data.payment)
+        && data.statusLogs is list && data.statusLogs.size() >= 1 && data.statusLogs.size() <= 20
+        && data.statusLogs[0] is map
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.fileExpiresAt is timestamp;
+    }
+
+    function isValidPrivateContact(data) {
+      return data.keys().hasAll(['customerPhone', 'createdAt'])
+        && data.keys().hasOnly(['customerPhone', 'createdAt'])
+        && isOptionalString(data.customerPhone, 40)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidFileChunk(data) {
+      return data.keys().hasAll(['chunkIndex', 'dataBase64', 'createdAt'])
+        && data.keys().hasOnly(['chunkIndex', 'dataBase64', 'createdAt'])
+        && data.chunkIndex is int && data.chunkIndex >= 0 && data.chunkIndex <= 60
+        && data.dataBase64 is string && data.dataBase64.size() >= 1 && data.dataBase64.size() <= 750000
+        && data.createdAt is timestamp;
+    }
+
+    function isValidProofDoc(data) {
+      return data.keys().hasAll(['originalName', 'mimeType', 'dataBase64', 'updatedAt'])
+        && data.keys().hasOnly(['originalName', 'mimeType', 'dataBase64', 'updatedAt'])
+        && data.originalName is string && data.originalName.size() >= 1 && data.originalName.size() <= 255
+        && data.mimeType is string && data.mimeType.size() >= 1 && data.mimeType.size() <= 100
+        && data.dataBase64 is string && data.dataBase64.size() >= 1 && data.dataBase64.size() <= 750000
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCounter(data, dateKey) {
+      return data.keys().hasAll(['dateKey', 'lastSeq', 'updatedAt'])
+        && data.keys().hasOnly(['dateKey', 'lastSeq', 'updatedAt'])
+        && data.dateKey == dateKey
+        && data.lastSeq is int && data.lastSeq >= 1 && data.lastSeq <= 999999
+        && data.updatedAt == request.time;
+    }
+
+    function isValidOperatorDoc(data) {
+      return data.keys().hasAll(['email', 'name', 'role', 'createdAt'])
+        && data.keys().hasOnly(['email', 'name', 'role', 'createdAt'])
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 100
+        && data.role in ['operator', 'owner']
+        && data.createdAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    // Connection health check doc (read-only)
+    match /test/{docId} {
+      allow get: if docId == 'connection';
+    }
+
+    // Store payment settings (publicly readable at checkout, operator-managed writes)
+    match /settings/{settingId} {
+      allow get: if settingId == 'payment';
+      allow create, update: if settingId == 'payment'
+        && isOperator()
+        && isValidPaymentSettings(incoming())
+        && incoming().updatedAt == request.time;
+      allow delete: if settingId == 'payment' && isOperator();
+    }
+
+    // Public catalog tariffs (operator-managed writes + canonical initial seed)
+    match /tariffs/{tariffId} {
+      allow get: if isValidId(tariffId);
+      allow list: if resource.data.isActive == true || isOperator();
+      allow create: if isValidId(tariffId)
+        && (
+          (
+            isOperator()
+            && isValidTariff(incoming())
+            && incoming().createdAt == request.time
+            && incoming().updatedAt == request.time
+          )
+          || isCanonicalDefaultTariff(tariffId, incoming())
+        );
+      allow update: if isOperator()
+        && isValidId(tariffId)
+        && isValidTariff(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isOperator() && isValidId(tariffId);
+    }
+
+    // Daily queue sequence counters
+    match /counters/{dateKey} {
+      allow get: if isValidDateKey(dateKey);
+      allow create: if isValidDateKey(dateKey)
+        && isValidCounter(incoming(), dateKey)
+        && incoming().lastSeq == 1;
+      allow update: if isValidDateKey(dateKey)
+        && isValidCounter(incoming(), dateKey)
+        && incoming().lastSeq == existing().lastSeq + 1;
+    }
+
+    // Orders indexed by secret tracking code (PK-TRK-...)
+    match /orders/{trackingCode} {
+      // Guest can ONLY get the exact order if they know the secret trackingCode;
+      // Only operators can list/query all orders.
+      allow get: if isValidTrackingCode(trackingCode);
+      allow list: if isOperator();
+
+      allow create: if isValidTrackingCode(trackingCode)
+        && isValidOrderSchema(incoming(), trackingCode)
+        && incoming().status == 'pending'
+        && incoming().rejectionReason == null
+        && incoming().payment.verifiedAt == null
+        && (
+          (
+            incoming().payment.method == 'cash'
+            && incoming().payment.status == 'unpaid'
+            && incoming().payment.hasProof == false
+            && incoming().payment.proofOriginalName == null
+          )
+          || (
+            incoming().payment.method in ['qr', 'transfer']
+            && incoming().payment.status == 'pending_verification'
+            && incoming().payment.hasProof == true
+            && incoming().payment.proofOriginalName is string
+            && incoming().payment.proofOriginalName.size() >= 1
+            && existsAfter(/databases/$(database)/documents/orders/$(trackingCode)/proof/main)
+          )
+        )
+        && incoming().file.deletedAt == null
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/tariffs/$(incoming().item.printTariffId))
+        && (incoming().item.bindTariffId == null
+          || exists(/databases/$(database)/documents/tariffs/$(incoming().item.bindTariffId)));
+
+      allow update: if isValidTrackingCode(trackingCode)
+        && isValidOrderSchema(incoming(), trackingCode)
+        && incoming().createdAt == existing().createdAt
+        && incoming().trackingCode == existing().trackingCode
+        && incoming().queueNumber == existing().queueNumber
+        && incoming().updatedAt == request.time
+        && (
+          // Tier 1: Operator updates status, payment verification, logs, or file expiry cleanup
+          (
+            isOperator()
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'rejectionReason', 'payment', 'statusLogs', 'file', 'updatedAt'
+            ])
+          )
+          ||
+          // Tier 2: Guest with exact trackingCode replacing transfer/QR proof before completion/paid
+          (
+            !(existing().status in ['completed', 'rejected'])
+            && existing().payment.status != 'paid'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['payment', 'updatedAt'])
+            && incoming().payment.method in ['qr', 'transfer']
+            && incoming().payment.status == 'pending_verification'
+            && incoming().payment.hasProof == true
+            && incoming().payment.proofOriginalName is string
+            && incoming().payment.proofOriginalName.size() >= 1
+            && incoming().payment.verifiedAt == null
+          )
+        );
+
+      allow delete: if isOperator() && isValidTrackingCode(trackingCode);
+
+      // Isolated customer phone PII (operator-only read)
+      match /private/{docId} {
+        allow get, list: if isOperator();
+        allow create: if docId == 'contact'
+          && isValidTrackingCode(trackingCode)
+          && isValidPrivateContact(incoming())
+          && incoming().createdAt == request.time
+          && (
+            exists(/databases/$(database)/documents/orders/$(trackingCode))
+            || existsAfter(/databases/$(database)/documents/orders/$(trackingCode))
+          );
+        allow delete: if isOperator();
+      }
+
+      // Uploaded document chunks (operator-only read/download)
+      match /fileChunks/{chunkId} {
+        allow get, list: if isOperator();
+        allow create: if isValidId(chunkId)
+          && isValidTrackingCode(trackingCode)
+          && isValidFileChunk(incoming())
+          && incoming().createdAt == request.time
+          && (
+            exists(/databases/$(database)/documents/orders/$(trackingCode))
+            || existsAfter(/databases/$(database)/documents/orders/$(trackingCode))
+          );
+        allow delete: if isOperator();
+      }
+
+      // Uploaded payment proof image (operator-only read)
+      match /proof/{proofId} {
+        allow get, list: if isOperator();
+        allow create: if proofId == 'main'
+          && isValidTrackingCode(trackingCode)
+          && isValidProofDoc(incoming())
+          && incoming().updatedAt == request.time
+          && (
+            exists(/databases/$(database)/documents/orders/$(trackingCode))
+            || existsAfter(/databases/$(database)/documents/orders/$(trackingCode))
+          );
+        allow update: if proofId == 'main'
+          && isValidTrackingCode(trackingCode)
+          && isValidProofDoc(incoming())
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/orders/$(trackingCode))
+          && !(get(/databases/$(database)/documents/orders/$(trackingCode)).data.status in ['completed', 'rejected']);
+        allow delete: if isOperator();
+      }
+    }
+
+    // Authorized operators collection
+    match /operators/{uid} {
+      allow get: if isSignedIn() && (request.auth.uid == uid || isOperator());
+      allow list: if isOperator();
+      allow create: if isBootstrappedAdmin()
+        && isValidId(uid)
+        && isValidOperatorDoc(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if isBootstrappedAdmin()
+        && isValidId(uid)
+        && isValidOperatorDoc(incoming())
+        && incoming().createdAt == existing().createdAt;
+      allow delete: if isBootstrappedAdmin() && isValidId(uid);
+    }
+  }
+}

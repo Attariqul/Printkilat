@@ -1,0 +1,277 @@
+{
+  "entities": {
+    "ServiceTariff": {
+      "title": "ServiceTariff",
+      "description": "Official print or binding service tariff managed by store operators.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "category": {
+          "type": "string",
+          "enum": ["cetak", "jilid"]
+        },
+        "paperSize": {
+          "type": "string",
+          "enum": ["A4", "F4"]
+        },
+        "colorMode": {
+          "type": "string",
+          "enum": ["BW", "Color"]
+        },
+        "price": {
+          "type": "number"
+        },
+        "isActive": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["name", "category", "price", "isActive", "createdAt", "updatedAt"]
+    },
+    "PaymentSettings": {
+      "title": "PaymentSettings",
+      "description": "Store static QRIS / payment QR image and bank transfer account details configured by operator.",
+      "type": "object",
+      "properties": {
+        "qrEnabled": { "type": "boolean" },
+        "qrLabel": { "type": "string", "maxLength": 100 },
+        "qrImageBase64": { "type": "string", "maxLength": 750000 },
+        "qrImageMimeType": { "type": "string", "maxLength": 100 },
+        "qrImageOriginalName": { "type": "string", "maxLength": 255 },
+        "bankEnabled": { "type": "boolean" },
+        "bankName": { "type": "string", "maxLength": 60 },
+        "bankAccountNumber": { "type": "string", "maxLength": 60 },
+        "bankAccountHolder": { "type": "string", "maxLength": 100 },
+        "paymentNote": { "type": "string", "maxLength": 300 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["qrEnabled", "qrLabel", "bankEnabled", "bankName", "bankAccountNumber", "bankAccountHolder", "updatedAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer print order keyed by secret tracking code.",
+      "type": "object",
+      "properties": {
+        "queueNumber": {
+          "type": "string",
+          "maxLength": 32,
+          "pattern": "^PK-[0-9]{8}-[0-9]{3,}$"
+        },
+        "trackingCode": {
+          "type": "string",
+          "maxLength": 32,
+          "pattern": "^PK-TRK-[A-Z0-9]+$"
+        },
+        "customerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "confirmed", "printing", "ready", "completed", "rejected"]
+        },
+        "rejectionReason": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "totalAmount": {
+          "type": "number"
+        },
+        "item": {
+          "type": "object"
+        },
+        "file": {
+          "type": "object"
+        },
+        "payment": {
+          "type": "object"
+        },
+        "statusLogs": {
+          "type": "array"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "fileExpiresAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "queueNumber",
+        "trackingCode",
+        "customerName",
+        "status",
+        "totalAmount",
+        "item",
+        "file",
+        "payment",
+        "statusLogs",
+        "createdAt",
+        "updatedAt",
+        "fileExpiresAt"
+      ]
+    },
+    "OrderPrivateContact": {
+      "title": "OrderPrivateContact",
+      "description": "Isolated customer phone PII accessible only to operators.",
+      "type": "object",
+      "properties": {
+        "customerPhone": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["createdAt"]
+    },
+    "OrderFileChunk": {
+      "title": "OrderFileChunk",
+      "description": "Base64 document chunk stored for operator download.",
+      "type": "object",
+      "properties": {
+        "chunkIndex": {
+          "type": "number"
+        },
+        "dataBase64": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 750000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["chunkIndex", "dataBase64", "createdAt"]
+    },
+    "OrderPaymentProof": {
+      "title": "OrderPaymentProof",
+      "description": "Payment transfer or QRIS proof image stored for operator verification.",
+      "type": "object",
+      "properties": {
+        "originalName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "mimeType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "dataBase64": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 750000
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["originalName", "mimeType", "dataBase64", "updatedAt"]
+    },
+    "DailyCounter": {
+      "title": "DailyCounter",
+      "description": "Daily sequential counter for queue numbers.",
+      "type": "object",
+      "properties": {
+        "dateKey": {
+          "type": "string",
+          "pattern": "^[0-9]{8}$"
+        },
+        "lastSeq": {
+          "type": "number"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["dateKey", "lastSeq", "updatedAt"]
+    },
+    "OperatorAccount": {
+      "title": "OperatorAccount",
+      "description": "Authorized store operator profile.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "role": {
+          "type": "string",
+          "enum": ["operator", "owner"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["email", "name", "role", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/tariffs/{tariffId}": {
+      "schema": { "$ref": "#/entities/ServiceTariff" },
+      "description": "Active and inactive print/binding tariffs."
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/PaymentSettings" },
+      "description": "Store payment configuration (static QR and bank account)."
+    },
+    "/orders/{trackingCode}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Orders indexed by secret tracking code."
+    },
+    "/orders/{trackingCode}/private/contact": {
+      "schema": { "$ref": "#/entities/OrderPrivateContact" },
+      "description": "Isolated customer phone PII."
+    },
+    "/orders/{trackingCode}/fileChunks/{chunkId}": {
+      "schema": { "$ref": "#/entities/OrderFileChunk" },
+      "description": "Uploaded print document chunks."
+    },
+    "/orders/{trackingCode}/proof/{proofId}": {
+      "schema": { "$ref": "#/entities/OrderPaymentProof" },
+      "description": "Uploaded payment proof image."
+    },
+    "/counters/{dateKey}": {
+      "schema": { "$ref": "#/entities/DailyCounter" },
+      "description": "Daily queue number sequence counters."
+    },
+    "/operators/{uid}": {
+      "schema": { "$ref": "#/entities/OperatorAccount" },
+      "description": "Authorized store operator accounts."
+    }
+  }
+}

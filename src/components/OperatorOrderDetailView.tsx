@@ -5,6 +5,8 @@ import {
   CheckCircle2,
   Download,
   FileText,
+  Maximize2,
+  X,
 } from 'lucide-react';
 import {
   ALLOWED_TRANSITIONS,
@@ -12,22 +14,33 @@ import {
   formatRupiah,
   getPaymentMethodLabel,
   getStatusLabel,
+  requiresPaymentProof,
   type OrderDetail,
   type OrderStatus,
 } from '../shared/printLogic';
-import { markOperatorOrderPaid, updateOperatorOrderStatus } from '../utils/api';
+import {
+  ApiError,
+  downloadOperatorOrderFile,
+  fetchOperatorProofDetail,
+  formatReadableError,
+  markOperatorOrderPaid,
+  updateOperatorOrderStatus,
+  type OperatorProofDetail,
+} from '../utils/api';
 import { PaymentStatusTag, StatusBadge } from './StatusBadge';
 
 interface OperatorOrderDetailViewProps {
   order: OrderDetail;
   onBack: () => void;
   onOrderUpdated: (updated: OrderDetail) => void;
+  onSessionExpired: () => void;
 }
 
 export function OperatorOrderDetailView({
   order,
   onBack,
   onOrderUpdated,
+  onSessionExpired,
 }: OperatorOrderDetailViewProps) {
   const nextOptions = ALLOWED_TRANSITIONS[order.status].filter((s) => s !== 'rejected');
   const canReject = ALLOWED_TRANSITIONS[order.status].includes('rejected');
@@ -38,6 +51,11 @@ export function OperatorOrderDetailView({
   const [rejectionReason, setRejectionReason] = useState('');
   const [savingStatus, setSavingStatus] = useState(false);
   const [savingPayment, setSavingPayment] = useState(false);
+  const [downloadingFile, setDownloadingFile] = useState(false);
+  const [proofDetail, setProofDetail] = useState<OperatorProofDetail | null>(null);
+  const [loadingProof, setLoadingProof] = useState(false);
+  const [proofError, setProofError] = useState<string | null>(null);
+  const [showProofLightbox, setShowProofLightbox] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -46,6 +64,45 @@ export function OperatorOrderDetailView({
     setSelectedNextStatus(valid[0] ?? '');
     setRejectionReason('');
   }, [order.id, order.status]);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+    setProofDetail(null);
+    setProofError(null);
+    setShowProofLightbox(false);
+
+    if (order.payment.hasProof) {
+      setLoadingProof(true);
+      void fetchOperatorProofDetail(order.id)
+        .then((detail) => {
+          if (!active) {
+            URL.revokeObjectURL(detail.blobUrl);
+            return;
+          }
+          objectUrl = detail.blobUrl;
+          setProofDetail(detail);
+        })
+        .catch((err) => {
+          if (!active) return;
+          if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+            onSessionExpired();
+            return;
+          }
+          setProofError(formatReadableError(err, 'Gagal memuat pratinjau bukti pembayaran.'));
+        })
+        .finally(() => {
+          if (active) setLoadingProof(false);
+        });
+    } else {
+      setLoadingProof(false);
+    }
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [order.id, order.payment.method, order.payment.hasProof, onSessionExpired]);
 
   async function handleStatusSubmit(e: FormEvent) {
     e.preventDefault();
@@ -60,7 +117,7 @@ export function OperatorOrderDetailView({
       onOrderUpdated(updated);
       setFeedback(`Status diperbarui menjadi ${getStatusLabel(updated.status)}.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal memperbarui status.');
+      setError(formatReadableError(err, 'Gagal memperbarui status.'));
     } finally {
       setSavingStatus(false);
     }
@@ -82,7 +139,7 @@ export function OperatorOrderDetailView({
       onOrderUpdated(updated);
       setFeedback('Pesanan ditolak dan alasan telah dicatat.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal menolak pesanan.');
+      setError(formatReadableError(err, 'Gagal menolak pesanan.'));
     } finally {
       setSavingStatus(false);
     }
@@ -97,9 +154,29 @@ export function OperatorOrderDetailView({
       onOrderUpdated(updated);
       setFeedback('Pembayaran ditandai Lunas.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal memperbarui status pembayaran.');
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        onSessionExpired();
+        return;
+      }
+      setError(formatReadableError(err, 'Gagal memperbarui status pembayaran.'));
     } finally {
       setSavingPayment(false);
+    }
+  }
+
+  async function handleDownloadFile() {
+    setError(null);
+    setDownloadingFile(true);
+    try {
+      await downloadOperatorOrderFile(order.id, order.file.originalName);
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        onSessionExpired();
+        return;
+      }
+      setError(formatReadableError(err, 'Gagal mengunduh berkas.'));
+    } finally {
+      setDownloadingFile(false);
     }
   }
 
@@ -187,14 +264,15 @@ export function OperatorOrderDetailView({
                 Berkas telah dihapus otomatis sesuai retensi 7 hari.
               </span>
             ) : (
-              <a
-                href={`/api/operator/orders/${order.id}/file`}
-                download={order.file.originalName}
-                className="min-h-[44px] px-4 py-2.5 rounded-xl border border-[#EA580C] bg-white hover:bg-orange-50 text-sm font-semibold text-[#C2410C] inline-flex items-center gap-2 transition-colors"
+              <button
+                type="button"
+                disabled={downloadingFile}
+                onClick={handleDownloadFile}
+                className="min-h-[44px] px-4 py-2.5 rounded-xl border border-[#EA580C] bg-white hover:bg-orange-50 text-sm font-semibold text-[#C2410C] inline-flex items-center gap-2 transition-colors disabled:opacity-60 cursor-pointer"
               >
                 <Download className="h-4 w-4" aria-hidden="true" />
-                <span>Unduh file</span>
-              </a>
+                <span>{downloadingFile ? 'Mengunduh...' : 'Unduh file'}</span>
+              </button>
             )}
           </div>
 
@@ -219,18 +297,55 @@ export function OperatorOrderDetailView({
               Metode: <span className="font-semibold text-[#111827]">{getPaymentMethodLabel(order.payment.method)}</span>
             </p>
 
-            {order.payment.method === 'transfer' && (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 flex items-center justify-center min-h-[120px]">
+            {(requiresPaymentProof(order.payment.method) || order.payment.hasProof) && (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 space-y-3">
                 {order.payment.hasProof ? (
-                  <img
-                    src={`/api/operator/orders/${order.id}/proof`}
-                    alt={`Bukti transfer ${order.queueNumber}`}
-                    className="max-h-52 w-auto rounded-lg object-contain"
-                  />
+                  loadingProof ? (
+                    <div className="min-h-[120px] flex items-center justify-center">
+                      <p className="text-xs text-slate-500">Memuat pratinjau bukti pembayaran...</p>
+                    </div>
+                  ) : proofError ? (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700">
+                      {proofError}
+                    </div>
+                  ) : proofDetail ? (
+                    <div className="space-y-3">
+                      <div className="flex justify-center bg-white rounded-lg border border-slate-200 p-2">
+                        <img
+                          src={proofDetail.blobUrl}
+                          alt={`Bukti pembayaran ${order.queueNumber}`}
+                          className="max-h-64 w-auto rounded object-contain"
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <span className="font-medium text-slate-600 truncate max-w-[200px]">
+                          {proofDetail.originalName}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowProofLightbox(true)}
+                            className="min-h-[34px] px-3 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-[#111827] inline-flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span>Perbesar</span>
+                          </button>
+                          <a
+                            href={proofDetail.blobUrl}
+                            download={proofDetail.originalName}
+                            className="min-h-[34px] px-3 py-1 rounded-lg border border-[#EA580C] bg-white hover:bg-orange-50 text-xs font-semibold text-[#C2410C] inline-flex items-center gap-1.5"
+                          >
+                            <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span>Unduh Bukti</span>
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null
                 ) : (
-                  <div className="text-center text-xs text-slate-500 py-4 space-y-1">
+                  <div className="text-center text-xs text-slate-500 py-6 space-y-1">
                     <FileText className="h-6 w-6 mx-auto text-slate-400" aria-hidden="true" />
-                    <p>Pratinjau bukti transfer belum diunggah pelanggan</p>
+                    <p>Pratinjau bukti pembayaran belum diunggah pelanggan</p>
                   </div>
                 )}
               </div>
@@ -321,6 +436,45 @@ export function OperatorOrderDetailView({
           </section>
         </div>
       </div>
+
+      {showProofLightbox && proofDetail && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="proof-lightbox-title"
+          onClick={() => setShowProofLightbox(false)}
+        >
+          <div
+            className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-3xl w-full p-4 sm:p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 id="proof-lightbox-title" className="text-sm sm:text-base font-bold text-[#111827]">
+                  Bukti Pembayaran · {order.queueNumber}
+                </h3>
+                <p className="text-xs text-slate-500 truncate">{proofDetail.originalName}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowProofLightbox(false)}
+                aria-label="Tutup pratinjau bukti pembayaran"
+                className="min-h-[38px] min-w-[38px] rounded-lg border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="bg-slate-50 rounded-xl border border-slate-200 p-2 flex items-center justify-center max-h-[75vh] overflow-auto">
+              <img
+                src={proofDetail.blobUrl}
+                alt={`Bukti pembayaran ${order.queueNumber}`}
+                className="max-h-[70vh] w-auto rounded object-contain"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

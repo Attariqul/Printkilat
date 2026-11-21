@@ -19,8 +19,11 @@ import {
 } from '../src/shared/printLogic.ts';
 import { hashPassword } from './auth.ts';
 
-export const DATA_DIR = path.resolve(process.cwd(), 'data');
-export const PROTECTED_UPLOADS_DIR = path.resolve(process.cwd(), 'protected_uploads');
+const isServerless = Boolean(process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const BASE_STORAGE_DIR = isServerless ? '/tmp/printkilat' : process.cwd();
+
+export const DATA_DIR = path.resolve(BASE_STORAGE_DIR, 'data');
+export const PROTECTED_UPLOADS_DIR = path.resolve(BASE_STORAGE_DIR, 'protected_uploads');
 export const DB_PATH = path.join(DATA_DIR, 'printkilat.db');
 
 let dbInstance: DatabaseSync | null = null;
@@ -495,7 +498,7 @@ export function listTariffs(includeInactive = false): ServiceTariff[] {
   }>;
 
   return rows.map((r) => ({
-    id: r.id,
+    id: String(r.id),
     name: r.name,
     category: r.category,
     paperSize: r.paper_size,
@@ -522,7 +525,7 @@ export function getTariffById(id: number): ServiceTariff | null {
     | undefined;
   if (!r) return null;
   return {
-    id: r.id,
+    id: String(r.id),
     name: r.name,
     category: r.category,
     paperSize: r.paper_size,
@@ -564,7 +567,7 @@ function hydrateOrderRow(db: DatabaseSync, orderRow: Record<string, unknown>): O
   }));
 
   return {
-    id: orderId,
+    id: String(orderId),
     queueNumber: String(orderRow.queue_number),
     trackingCode: String(orderRow.tracking_code),
     customerName: String(orderRow.customer_name),
@@ -577,14 +580,14 @@ function hydrateOrderRow(db: DatabaseSync, orderRow: Record<string, unknown>): O
     updatedAt: String(orderRow.updated_at),
     fileExpiresAt: String(orderRow.file_expires_at),
     item: {
-      printTariffId: Number(itemRow.print_tariff_id),
+      printTariffId: String(itemRow.print_tariff_id),
       printTariffName: String(itemRow.print_tariff_name),
       paperSize: (itemRow.paper_size as PaperSize) ?? null,
       colorMode: (itemRow.color_mode as ColorMode) ?? null,
       printUnitPrice: Number(itemRow.print_unit_price),
       pageCount: Number(itemRow.page_count),
       copies: Number(itemRow.copies),
-      bindTariffId: itemRow.bind_tariff_id ? Number(itemRow.bind_tariff_id) : null,
+      bindTariffId: itemRow.bind_tariff_id ? String(itemRow.bind_tariff_id) : null,
       bindTariffName: String(itemRow.bind_tariff_name),
       bindUnitPrice: Number(itemRow.bind_unit_price),
       subtotalPrint: Number(itemRow.subtotal_print),

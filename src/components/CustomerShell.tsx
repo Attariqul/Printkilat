@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Clock, FilePlus2, Home, ReceiptText } from 'lucide-react';
 
-export type CustomerTab = 'home' | 'order' | 'track' | 'tariffs' | 'history';
+export type CustomerTab = 'home' | 'order' | 'track' | 'tariffs';
 
 interface CustomerShellProps {
   activeTab: CustomerTab;
@@ -68,15 +68,6 @@ export function CustomerShell({
             >
               Daftar Harga
             </button>
-            <button
-              type="button"
-              onClick={() => onNavigate('history')}
-              className={`whitespace-nowrap shrink-0 py-1 border-b-2 transition-colors cursor-pointer ${
-                activeTab === 'history' ? 'border-white text-white font-semibold' : 'border-transparent hover:text-white'
-              }`}
-            >
-              Riwayat
-            </button>
           </nav>
 
           <div className="shrink-0">
@@ -137,7 +128,7 @@ export function CustomerShell({
               type="button"
               onClick={() => onNavigate('tariffs')}
               className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium cursor-pointer ${
-                activeTab === 'tariffs' || activeTab === 'history' ? 'text-[#C2410C] font-semibold' : 'text-slate-600'
+                activeTab === 'tariffs' ? 'text-[#C2410C] font-semibold' : 'text-slate-600'
               }`}
             >
               <ReceiptText className="h-5 w-5" aria-hidden="true" />

@@ -7,7 +7,7 @@ import {
   type ServiceTariff,
   type TariffCategory,
 } from '../shared/printLogic';
-import { createServiceTariff, updateServiceTariff } from '../utils/api';
+import { createServiceTariff, formatReadableError, updateServiceTariff } from '../utils/api';
 
 interface OperatorTariffManagerViewProps {
   tariffs: ServiceTariff[];
@@ -18,7 +18,7 @@ export function OperatorTariffManagerView({
   tariffs,
   onTariffsUpdated,
 }: OperatorTariffManagerViewProps) {
-  const [editingId, setEditingId] = useState<number | 'new'>(() => tariffs[0]?.id ?? 'new');
+  const [editingId, setEditingId] = useState<string | 'new'>(() => tariffs[0]?.id ?? 'new');
 
   const initialSelected = tariffs[0];
   const [name, setName] = useState(initialSelected?.name ?? '');
@@ -97,7 +97,7 @@ export function OperatorTariffManagerView({
         if (last) setEditingId(last.id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal menyimpan layanan tarif.');
+      setError(formatReadableError(err, 'Gagal menyimpan layanan tarif.'));
     } finally {
       setSaving(false);
     }

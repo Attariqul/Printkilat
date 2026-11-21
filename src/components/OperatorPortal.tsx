@@ -1,34 +1,46 @@
 import { useEffect, useMemo, useState } from 'react';
-import { LogOut, RefreshCw, Search } from 'lucide-react';
+import { Image as ImageIcon, LogOut, QrCode, RefreshCw, Search } from 'lucide-react';
 import {
   formatRupiah,
   getPaymentMethodLabel,
   type OrderDetail,
   type OrderStatus,
+  type PaymentSettings,
   type ServiceTariff,
 } from '../shared/printLogic';
 import {
+  ApiError,
   fetchOperatorOrders,
+  fetchPaymentSettings,
   fetchTariffs,
+  formatReadableError,
   type OperatorOrdersResponse,
   type OperatorUser,
 } from '../utils/api';
 import { OperatorOrderDetailView } from './OperatorOrderDetailView';
+import { OperatorPaymentSettingsView } from './OperatorPaymentSettingsView';
 import { OperatorTariffManagerView } from './OperatorTariffManagerView';
+import { QrAccessModal } from './QrCodeDisplay';
 import { PaymentStatusTag, StatusBadge } from './StatusBadge';
 
-export type OperatorTab = 'queue' | 'tariffs' | 'history';
+export type OperatorTab = 'queue' | 'tariffs' | 'payment' | 'history';
 
 interface OperatorPortalProps {
   operator: OperatorUser;
+  paymentSettings: PaymentSettings;
   onLogout: () => Promise<void>;
+  onSessionExpired: () => void;
   onTariffsChanged: (tariffs: ServiceTariff[]) => void;
+  onPaymentSettingsChanged: (settings: PaymentSettings) => void;
 }
 
 export function OperatorPortal({
   operator,
+  paymentSettings,
   onLogout,
+  onSessionExpired,
   onTariffsChanged,
+  onPaymentSettingsChanged,
 }: OperatorPortalProps) {
   const [activeTab, setActiveTab] = useState<OperatorTab>('queue');
   const [ordersData, setOrdersData] = useState<OperatorOrdersResponse>({
@@ -36,22 +48,33 @@ export function OperatorPortal({
     counts: { pending: 0, confirmed: 0, printing: 0, ready: 0, completed: 0, rejected: 0 },
   });
   const [tariffs, setTariffs] = useState<ServiceTariff[]>([]);
-  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | OrderStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
 
   async function refreshAll() {
     setLoading(true);
+    setLoadError(null);
     try {
-      const [ordersRes, tariffsRes] = await Promise.all([
+      const [ordersRes, tariffsRes, paymentRes] = await Promise.all([
         fetchOperatorOrders(),
         fetchTariffs(true),
+        fetchPaymentSettings(),
       ]);
       setOrdersData(ordersRes);
       setTariffs(tariffsRes);
       onTariffsChanged(tariffsRes.filter((t) => t.isActive));
+      onPaymentSettingsChanged(paymentRes);
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        onSessionExpired();
+        return;
+      }
+      setLoadError(formatReadableError(err, 'Gagal memuat data antrean.'));
     } finally {
       setLoading(false);
     }
@@ -119,7 +142,7 @@ export function OperatorPortal({
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col">
-      {/* Top Bar matching PDF Pages 4-6 */}
+      {/* Top Bar */}
       <header className="sticky top-0 z-30 bg-[#F97316] text-white border-b border-orange-600/30">
         <div className="max-w-7xl mx-auto px-3 sm:px-8 h-14 flex items-center justify-between gap-3 sm:gap-6">
           <button
@@ -166,6 +189,20 @@ export function OperatorPortal({
               type="button"
               onClick={() => {
                 setSelectedOrderId(null);
+                setActiveTab('payment');
+              }}
+              className={`min-h-[36px] px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                activeTab === 'payment'
+                  ? 'bg-white/20 text-white'
+                  : 'text-orange-50 hover:bg-white/10'
+              }`}
+            >
+              Pembayaran
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedOrderId(null);
                 setActiveTab('history');
               }}
               className={`min-h-[36px] px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
@@ -178,6 +215,14 @@ export function OperatorPortal({
             </button>
             <button
               type="button"
+              onClick={() => setShowQrModal(true)}
+              className="min-h-[36px] px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold text-orange-50 hover:bg-white/15 inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+            >
+              <QrCode className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>QR Gerai</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setShowLogoutModal(true)}
               className="min-h-[36px] px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold text-orange-50 hover:bg-white/15 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
             >
@@ -187,12 +232,28 @@ export function OperatorPortal({
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-6 sm:py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-6 sm:py-8 space-y-5">
+        {loadError && (
+          <div
+            role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center justify-between gap-4"
+          >
+            <span className="font-medium">{loadError}</span>
+            <button
+              type="button"
+              onClick={() => void refreshAll()}
+              className="min-h-[34px] px-3 py-1 rounded-lg border border-red-300 bg-white text-xs font-semibold text-red-800 hover:bg-red-100 shrink-0 cursor-pointer"
+            >
+              Coba lagi
+            </button>
+          </div>
+        )}
         {selectedOrder ? (
           <OperatorOrderDetailView
             order={selectedOrder}
             onBack={() => setSelectedOrderId(null)}
             onOrderUpdated={handleOrderUpdated}
+            onSessionExpired={onSessionExpired}
           />
         ) : activeTab === 'tariffs' ? (
           <OperatorTariffManagerView
@@ -201,6 +262,11 @@ export function OperatorPortal({
               setTariffs(updated);
               onTariffsChanged(updated.filter((t) => t.isActive));
             }}
+          />
+        ) : activeTab === 'payment' ? (
+          <OperatorPaymentSettingsView
+            settings={paymentSettings}
+            onSettingsUpdated={onPaymentSettingsChanged}
           />
         ) : activeTab === 'history' ? (
           <div className="space-y-5">
@@ -238,6 +304,7 @@ export function OperatorPortal({
                         <th className="py-3 px-4">Antrean</th>
                         <th className="py-3 px-3">Pelanggan</th>
                         <th className="py-3 px-3">Dokumen &amp; Spesifikasi</th>
+                        <th className="py-3 px-3">Pembayaran</th>
                         <th className="py-3 px-3 text-right">Total</th>
                         <th className="py-3 px-3">Status</th>
                         <th className="py-3 px-4 text-right">Aksi</th>
@@ -255,6 +322,24 @@ export function OperatorPortal({
                             <p className="text-xs text-slate-500">
                               {o.item.printTariffName} · {o.item.pageCount} hlm · {o.item.copies} rangkap
                             </p>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="space-y-1">
+                              <PaymentStatusTag status={o.payment.status} />
+                              <p className="text-[11px] text-slate-500">
+                                {getPaymentMethodLabel(o.payment.method)}
+                              </p>
+                              {o.payment.hasProof && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedOrderId(o.id)}
+                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#C2410C] hover:underline cursor-pointer"
+                                >
+                                  <ImageIcon className="h-3 w-3" aria-hidden="true" />
+                                  <span>Lihat bukti bayar</span>
+                                </button>
+                              )}
+                            </div>
                           </td>
                           <td className="py-3 px-3 text-right font-mono font-semibold text-[#111827] tabular-nums whitespace-nowrap">
                             {formatRupiah(o.totalAmount)}
@@ -282,7 +367,7 @@ export function OperatorPortal({
         ) : (
           /* Antrean View */
           <div className="space-y-6">
-            {/* Summary Counters matching Page 6 */}
+            {/* Summary Counters */}
             <section className="grid grid-cols-1 sm:grid-cols-3 gap-4" aria-label="Ringkasan antrean">
               <div className="bg-white rounded-2xl border border-slate-200 p-5">
                 <p className="font-mono text-3xl font-extrabold text-[#111827] tabular-nums">
@@ -364,7 +449,7 @@ export function OperatorPortal({
                     Tidak ada pesanan aktif pada filter ini.
                   </p>
                   <p className="text-xs text-slate-500">
-                    Pesanan baru dari pelanggan akan muncul otomatis di daftar ini.
+                    Pesanan baru dari pelanggan akan muncul di daftar ini.
                   </p>
                 </div>
               ) : (
@@ -408,6 +493,16 @@ export function OperatorPortal({
                               <p className="text-[11px] text-slate-500">
                                 {getPaymentMethodLabel(o.payment.method)}
                               </p>
+                              {o.payment.hasProof && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedOrderId(o.id)}
+                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#C2410C] hover:underline cursor-pointer"
+                                >
+                                  <ImageIcon className="h-3 w-3" aria-hidden="true" />
+                                  <span>Bukti terlampir</span>
+                                </button>
+                              )}
                             </div>
                           </td>
                           <td className="py-3.5 px-3 text-right font-mono font-bold text-[#111827] tabular-nums whitespace-nowrap">
@@ -436,7 +531,15 @@ export function OperatorPortal({
         )}
       </main>
 
-      {/* Logout Confirmation Modal matching Page 6 */}
+      <QrAccessModal
+        open={showQrModal}
+        onClose={() => setShowQrModal(false)}
+        title="QR Code Gerai untuk Pelanggan"
+        subtitle="Cetak atau tampilkan QR Code ini di meja kasir agar pelanggan langsung membuka halaman pesan tanpa mengetik URL."
+        targetPath="/tamu"
+      />
+
+      {/* Logout Confirmation Modal */}
       {showLogoutModal && (
         <div
           className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4"
@@ -454,7 +557,7 @@ export function OperatorPortal({
                 Keluar dari akun operator?
               </h2>
               <p className="mt-1.5 text-sm text-slate-600 leading-relaxed">
-                Anda perlu masuk lagi dengan email dan kata sandi untuk mengelola antrean. Pesanan yang sedang berjalan tidak terpengaruh.
+                Anda perlu masuk kembali menggunakan akun Google operator ({operator.email}) untuk mengelola antrean. Pesanan yang sedang berjalan tidak terpengaruh.
               </p>
             </div>
 

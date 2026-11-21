@@ -1,24 +1,14 @@
-import { ArrowRight, Clock, Printer, ReceiptText } from 'lucide-react';
-import { formatRupiah, type OrderDetail } from '../shared/printLogic';
+import { useState } from 'react';
+import { ArrowRight, Clock, LockKeyhole, Printer, QrCode, ReceiptText } from 'lucide-react';
 import type { CustomerTab } from './CustomerShell';
-import { StatusBadge } from './StatusBadge';
+import { QrAccessModal } from './QrCodeDisplay';
 
 interface CustomerHomeViewProps {
-  activeOrders: OrderDetail[];
-  loadingOrders: boolean;
   onNavigate: (tab: CustomerTab) => void;
-  onOpenTrackOrder: (trackingCode: string) => void;
 }
 
-export function CustomerHomeView({
-  activeOrders,
-  loadingOrders,
-  onNavigate,
-  onOpenTrackOrder,
-}: CustomerHomeViewProps) {
-  const ongoingOrders = activeOrders.filter(
-    (o) => o.status !== 'completed' && o.status !== 'rejected'
-  );
+export function CustomerHomeView({ onNavigate }: CustomerHomeViewProps) {
+  const [qrOpen, setQrOpen] = useState(false);
 
   return (
     <div>
@@ -75,86 +65,51 @@ export function CustomerHomeView({
                 />
               </div>
               <p className="mt-1 text-sm text-slate-600">
-                Lihat nomor antrean dan progres cetak dengan kode pelacakanmu.
+                Lihat nomor antrean dan progres cetak dengan kode pelacakan khususmu.
               </p>
             </div>
           </button>
         </div>
 
-        {/* Active Orders + Quick Secondary Links */}
+        {/* Privacy Info + Quick Secondary Links */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <section className="lg:col-span-8 space-y-3" aria-labelledby="active-orders-heading">
-            <div className="flex items-center justify-between">
-              <h2 id="active-orders-heading" className="text-sm font-bold tracking-wide text-slate-500">
-                Pesanan aktif
-              </h2>
-              {ongoingOrders.length > 0 && (
-                <span className="text-xs font-medium text-slate-500 tabular-nums">
-                  {ongoingOrders.length} pesanan berjalan
-                </span>
-              )}
+          <section className="lg:col-span-8 space-y-3" aria-labelledby="tracking-privacy-heading">
+            <h2 id="tracking-privacy-heading" className="text-sm font-bold tracking-wide text-slate-500">
+              Privasi &amp; Pelacakan Pesanan
+            </h2>
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="h-10 w-10 rounded-xl bg-[#FEFBE8] border border-[#FDE68A] flex items-center justify-center shrink-0 text-[#C2410C]">
+                  <LockKeyhole className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-bold text-[#111827]">
+                    Dilindungi kode khusus pelacakan
+                  </p>
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                    Demi menjaga privasi dokumen, daftar pesanan tidak ditampilkan secara terbuka. Status pesanan hanya dapat diperiksa di menu <span className="font-semibold text-[#111827]">Cek status pesanan</span> dengan memasukkan kode khusus (<span className="font-mono">PK-TRK-...</span>) atau scan QR struk.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onNavigate('track')}
+                className="min-h-[42px] px-4 py-2 rounded-xl border border-[#EA580C] text-[#C2410C] hover:bg-orange-50 text-xs font-semibold whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                Masukkan Kode Khusus
+              </button>
             </div>
-
-            {loadingOrders ? (
-              <div className="bg-white rounded-2xl border border-slate-200 p-5 animate-pulse space-y-3">
-                <div className="h-4 w-40 bg-slate-200 rounded" />
-                <div className="h-3 w-56 bg-slate-100 rounded" />
-              </div>
-            ) : ongoingOrders.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center">
-                <p className="text-sm font-medium text-slate-700">
-                  Belum ada pesanan aktif yang tersimpan di perangkat ini.
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Buat pesanan baru atau masukkan kode <span className="font-mono">PK-TRK-...</span> di menu Lacak.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {ongoingOrders.map((order) => (
-                  <button
-                    key={order.id}
-                    type="button"
-                    onClick={() => onOpenTrackOrder(order.trackingCode)}
-                    className="w-full text-left bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 hover:border-orange-300 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2.5 flex-wrap">
-                        <span className="font-mono text-base font-bold text-[#111827] tabular-nums">
-                          {order.queueNumber}
-                        </span>
-                        <span aria-hidden="true" className="text-slate-300">·</span>
-                        <span className="font-mono text-xs text-slate-500">
-                          {order.trackingCode}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-xs sm:text-sm text-slate-600 truncate">
-                        {order.item.colorMode || order.item.printTariffName}{' '}
-                        {order.item.paperSize ?? ''} · {order.item.pageCount} hlm · {order.item.copies} rangkap ·{' '}
-                        <span className="font-semibold text-[#111827] tabular-nums">
-                          {formatRupiah(order.totalAmount)}
-                        </span>
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-                      <StatusBadge status={order.status} compact />
-                      <ArrowRight className="h-4 w-4 text-slate-400" aria-hidden="true" />
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
           </section>
 
           <aside className="lg:col-span-4 space-y-3">
             <h2 className="text-sm font-bold tracking-wide text-slate-500">
               Pintasan cepat
             </h2>
-            <div className="grid grid-cols-2 lg:grid-cols-1 gap-3">
+            <div className="space-y-2.5">
               <button
                 type="button"
                 onClick={() => onNavigate('tariffs')}
-                className="min-h-[48px] px-4 py-3 bg-white rounded-xl border border-slate-200 hover:border-orange-300 text-sm font-semibold text-[#111827] flex items-center justify-between gap-2 transition-colors cursor-pointer"
+                className="w-full min-h-[48px] px-4 py-3 bg-white rounded-xl border border-slate-200 hover:border-orange-300 text-sm font-semibold text-[#111827] flex items-center justify-between gap-2 transition-colors cursor-pointer"
               >
                 <span className="flex items-center gap-2">
                   <ReceiptText className="h-4 w-4 text-[#EA580C]" aria-hidden="true" />
@@ -162,14 +117,15 @@ export function CustomerHomeView({
                 </span>
                 <ArrowRight className="h-4 w-4 text-slate-400" aria-hidden="true" />
               </button>
+
               <button
                 type="button"
-                onClick={() => onNavigate('history')}
-                className="min-h-[48px] px-4 py-3 bg-white rounded-xl border border-slate-200 hover:border-orange-300 text-sm font-semibold text-[#111827] flex items-center justify-between gap-2 transition-colors cursor-pointer"
+                onClick={() => setQrOpen(true)}
+                className="w-full min-h-[48px] px-4 py-3 bg-white rounded-xl border border-slate-200 hover:border-orange-300 text-sm font-semibold text-[#111827] flex items-center justify-between gap-2 transition-colors cursor-pointer"
               >
                 <span className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-[#EA580C]" aria-hidden="true" />
-                  <span>Riwayat pesanan</span>
+                  <QrCode className="h-4 w-4 text-[#EA580C]" aria-hidden="true" />
+                  <span>QR Code Akses Cepat</span>
                 </span>
                 <ArrowRight className="h-4 w-4 text-slate-400" aria-hidden="true" />
               </button>
@@ -183,6 +139,12 @@ export function CustomerHomeView({
           </aside>
         </div>
       </div>
+
+      <QrAccessModal
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+        targetPath="/tamu"
+      />
     </div>
   );
 }

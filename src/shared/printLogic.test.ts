@@ -2,11 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildTrackingCode,
+  calculateChunkCount,
   calculateOrderTotal,
   canTransitionStatus,
+  FILE_CHUNK_RAW_BYTES,
   formatQueueNumber,
   formatRupiah,
+  getPaymentMethodLabel,
   getStatusStepIndex,
+  requiresPaymentProof,
+  slugifyTariffId,
+  validateOrderPaymentInput,
   validateUploadMeta,
 } from './printLogic';
 
@@ -79,4 +85,31 @@ test('validateUploadMeta validates extensions and 20MB limit', () => {
   assert.equal(validateUploadMeta('virus.exe', 1024).ok, false);
   assert.equal(validateUploadMeta('huge.pdf', 21 * 1024 * 1024).ok, false);
   assert.equal(validateUploadMeta('empty.pdf', 0).ok, false);
+});
+
+test('calculateChunkCount stays within Firestore 60 chunk limit up to 20MB', () => {
+  assert.equal(calculateChunkCount(1024), 1);
+  assert.equal(calculateChunkCount(FILE_CHUNK_RAW_BYTES + 1), 2);
+  const chunksAt20Mb = calculateChunkCount(20 * 1024 * 1024);
+  assert.equal(chunksAt20Mb <= 60, true);
+});
+
+test('slugifyTariffId generates clean URL-safe Firestore document IDs', () => {
+  assert.equal(slugifyTariffId('Print Warna A3!', 'm1'), 'print-warna-a3-m1');
+  assert.match(slugifyTariffId('   '), /^tarif/);
+});
+
+test('validateOrderPaymentInput requires payment proof for qr and transfer but not cash', () => {
+  assert.equal(requiresPaymentProof('cash'), false);
+  assert.equal(requiresPaymentProof('qr'), true);
+  assert.equal(requiresPaymentProof('transfer'), true);
+
+  assert.equal(validateOrderPaymentInput('cash', false).ok, true);
+  assert.equal(validateOrderPaymentInput('qr', false).ok, false);
+  assert.equal(validateOrderPaymentInput('transfer', false).ok, false);
+  assert.equal(validateOrderPaymentInput('qr', true).ok, true);
+  assert.equal(validateOrderPaymentInput('transfer', true).ok, true);
+
+  assert.equal(getPaymentMethodLabel('qr'), 'QR / QRIS');
+  assert.equal(getPaymentMethodLabel('transfer'), 'Transfer Bank');
 });

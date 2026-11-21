@@ -1,38 +1,46 @@
-import { useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import {
   ArrowLeft,
+  Building2,
   Check,
   CheckCircle2,
   Copy,
+  Download,
   FileText,
+  Image as ImageIcon,
   Minus,
   Plus,
   QrCode,
   ShieldCheck,
+  Trash2,
   UploadCloud,
 } from 'lucide-react';
 import {
   calculateOrderTotal,
   formatFileSize,
   formatRupiah,
+  requiresPaymentProof,
+  validateOrderPaymentInput,
   validateUploadMeta,
   type OrderDetail,
   type PaymentMethod,
+  type PaymentSettings,
   type ServiceTariff,
 } from '../shared/printLogic';
-import { createOrder, detectPdfPagesInBrowser } from '../utils/api';
+import { createOrder, detectPdfPagesInBrowser, formatReadableError } from '../utils/api';
+import { QrCodeGraphic } from './QrCodeDisplay';
 
 interface CreateOrderViewProps {
   tariffs: ServiceTariff[];
+  paymentSettings: PaymentSettings;
   onBack: () => void;
-  onOrderCreated: (order: OrderDetail) => void;
   onTrackOrder: (trackingCode: string) => void;
 }
 
 export function CreateOrderView({
   tariffs,
+  paymentSettings,
   onBack,
-  onOrderCreated,
   onTrackOrder,
 }: CreateOrderViewProps) {
   const printTariffs = useMemo(
@@ -49,8 +57,8 @@ export function CreateOrderView({
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [detectedPages, setDetectedPages] = useState<number | null>(null);
-  const [printTariffId, setPrintTariffId] = useState<number>(() => printTariffs[0]?.id ?? 0);
-  const [bindTariffId, setBindTariffId] = useState<number>(() => bindTariffs[0]?.id ?? 0);
+  const [printTariffId, setPrintTariffId] = useState<string>(() => printTariffs[0]?.id ?? '');
+  const [bindTariffId, setBindTariffId] = useState<string>(() => bindTariffs[0]?.id ?? '');
   const [pageCount, setPageCount] = useState<number>(1);
   const [copies, setCopies] = useState<number>(1);
   const [notes, setNotes] = useState<string>('');
@@ -58,11 +66,32 @@ export function CreateOrderView({
   const [customerPhone, setCustomerPhone] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofPreviewUrl, setProofPreviewUrl] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [createdOrder, setCreatedOrder] = useState<OrderDetail | null>(null);
-  const [copiedKey, setCopiedKey] = useState<'queue' | 'track' | null>(null);
+  const [copiedKey, setCopiedKey] = useState<'queue' | 'track' | 'bank' | null>(null);
+
+  useEffect(() => {
+    if (paymentMethod === 'qr' && !paymentSettings.qrEnabled) {
+      setPaymentMethod(paymentSettings.bankEnabled ? 'transfer' : 'cash');
+    } else if (paymentMethod === 'transfer' && !paymentSettings.bankEnabled) {
+      setPaymentMethod(paymentSettings.qrEnabled ? 'qr' : 'cash');
+    }
+  }, [paymentMethod, paymentSettings.qrEnabled, paymentSettings.bankEnabled]);
+
+  useEffect(() => {
+    if (!proofFile) {
+      setProofPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(proofFile);
+    setProofPreviewUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [proofFile]);
 
   const activePrintTariff =
     printTariffs.find((t) => t.id === printTariffId) ?? printTariffs[0];
@@ -104,8 +133,21 @@ export function CreateOrderView({
   }
 
   function handleProofSelect(e: ChangeEvent<HTMLInputElement>) {
+    setError(null);
     const file = e.target.files?.[0];
-    if (file) setProofFile(file);
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Bukti pembayaran harus berupa gambar (JPG, PNG, atau WebP).');
+      return;
+    }
+    setProofFile(file);
+  }
+
+  function handleClearProof() {
+    setProofFile(null);
+    if (proofInputRef.current) {
+      proofInputRef.current.value = '';
+    }
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -129,41 +171,46 @@ export function CreateOrderView({
       return;
     }
 
-    const fd = new FormData();
-    fd.append('file', selectedFile);
-    fd.append('printTariffId', String(activePrintTariff.id));
-    if (activeBindTariff) {
-      fd.append('bindTariffId', String(activeBindTariff.id));
-    }
-    fd.append('pageCount', String(pageCount));
-    fd.append('copies', String(copies));
-    fd.append('paymentMethod', paymentMethod);
-    fd.append('notes', notes.trim());
-    fd.append('customerName', customerName.trim());
-    fd.append('customerPhone', customerPhone.trim());
-    if (paymentMethod === 'transfer' && proofFile) {
-      fd.append('payment_proof', proofFile);
+    const paymentCheck = validateOrderPaymentInput(paymentMethod, Boolean(proofFile));
+    if (!paymentCheck.ok) {
+      setError(paymentCheck.error ?? 'Bukti pembayaran wajib diunggah.');
+      return;
     }
 
     setSubmitting(true);
     try {
-      const order = await createOrder(fd);
+      const order = await createOrder({
+        file: selectedFile,
+        printTariffId: activePrintTariff.id,
+        bindTariffId: activeBindTariff?.id ?? null,
+        pageCount,
+        copies,
+        paymentMethod,
+        notes: notes.trim(),
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
+        proofFile: requiresPaymentProof(paymentMethod) ? proofFile : null,
+      });
       setCreatedOrder(order);
-      onOrderCreated(order);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal mengirim pesanan.');
+      setError(formatReadableError(err, 'Gagal mengirim pesanan.'));
     } finally {
       setSubmitting(false);
     }
   }
 
-  function copyText(text: string, key: 'queue' | 'track') {
+  function copyText(text: string, key: 'queue' | 'track' | 'bank') {
     navigator.clipboard?.writeText(text).catch(() => {});
     setCopiedKey(key);
     setTimeout(() => setCopiedKey(null), 1800);
   }
 
   if (createdOrder) {
+    const trackQrUrl =
+      typeof window !== 'undefined'
+        ? `${window.location.origin}/tamu/lacak?code=${encodeURIComponent(createdOrder.trackingCode)}`
+        : `/tamu/lacak?code=${encodeURIComponent(createdOrder.trackingCode)}`;
+
     return (
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
         <div className="bg-white rounded-2xl border border-orange-200 shadow-sm p-6 sm:p-8 space-y-6">
@@ -176,7 +223,7 @@ export function CreateOrderView({
                 Pesanan berhasil dikirim!
               </h1>
               <p className="mt-1 text-sm text-slate-600">
-                Simpan kode pelacakan rahasia di bawah untuk memantau progres cetak tanpa perlu login.
+                Simpan kode pelacakan rahasia atau scan QR di bawah untuk memantau progres cetak tanpa perlu login.
               </p>
             </div>
           </div>
@@ -215,7 +262,23 @@ export function CreateOrderView({
                   {copiedKey === 'track' ? <Check className="h-4 w-4 text-emerald-700" /> : <Copy className="h-4 w-4" />}
                 </button>
               </div>
-              <p className="mt-1 text-xs text-slate-600">Otomatis tersimpan di riwayat perangkat ini.</p>
+              <p className="mt-1 text-xs text-slate-600">Simpan kode ini untuk membuka status pesanan.</p>
+            </div>
+          </div>
+
+          {/* QR Code Receipt Card */}
+          <div className="rounded-xl bg-[#FFFDF9] border border-orange-100 p-4 flex flex-col sm:flex-row items-center gap-4">
+            <QrCodeGraphic
+              value={trackQrUrl}
+              size={132}
+              label={`QR Code lacak pesanan ${createdOrder.trackingCode}`}
+            />
+            <div className="text-center sm:text-left space-y-1">
+              <p className="text-sm font-bold text-[#111827]">QR Code Lacak Pesanan</p>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Screenshot atau scan QR Code ini dari HP lain untuk langsung membuka status antrean pesananmu tanpa perlu mengetik kode.
+              </p>
+              <p className="font-mono text-[11px] text-[#C2410C] break-all">{trackQrUrl}</p>
             </div>
           </div>
 
@@ -338,7 +401,7 @@ export function CreateOrderView({
             <select
               id="print-type-select"
               value={activePrintTariff?.id ?? ''}
-              onChange={(e) => setPrintTariffId(Number(e.target.value))}
+              onChange={(e) => setPrintTariffId(e.target.value)}
               className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-medium text-[#111827] focus:border-[#EA580C] focus:outline-none focus:ring-2 focus:ring-orange-500/20"
             >
               {printTariffs.map((t) => (
@@ -402,7 +465,7 @@ export function CreateOrderView({
             <select
               id="bind-type-select"
               value={activeBindTariff?.id ?? ''}
-              onChange={(e) => setBindTariffId(Number(e.target.value))}
+              onChange={(e) => setBindTariffId(e.target.value)}
               className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-medium text-[#111827] focus:border-[#EA580C] focus:outline-none focus:ring-2 focus:ring-orange-500/20"
             >
               {bindTariffs.map((t) => (
@@ -461,10 +524,21 @@ export function CreateOrderView({
           {/* Pembayaran */}
           <div>
             <span className="block text-sm font-semibold text-[#111827] mb-2">Pembayaran</span>
-            <div className="grid grid-cols-2 gap-2.5">
+            <div
+              className={`grid gap-2.5 ${
+                paymentSettings.qrEnabled && paymentSettings.bankEnabled
+                  ? 'grid-cols-1 sm:grid-cols-3'
+                  : paymentSettings.qrEnabled || paymentSettings.bankEnabled
+                  ? 'grid-cols-1 sm:grid-cols-2'
+                  : 'grid-cols-1'
+              }`}
+            >
               <button
                 type="button"
-                onClick={() => setPaymentMethod('cash')}
+                onClick={() => {
+                  setError(null);
+                  setPaymentMethod('cash');
+                }}
                 className={`min-h-[46px] px-4 py-2.5 rounded-xl font-semibold text-sm border transition-colors cursor-pointer ${
                   paymentMethod === 'cash'
                     ? 'bg-[#EA580C] border-[#EA580C] text-white'
@@ -473,30 +547,123 @@ export function CreateOrderView({
               >
                 Tunai di tempat
               </button>
-              <button
-                type="button"
-                onClick={() => setPaymentMethod('transfer')}
-                className={`min-h-[46px] px-4 py-2.5 rounded-xl font-semibold text-sm border transition-colors cursor-pointer ${
-                  paymentMethod === 'transfer'
-                    ? 'bg-[#EA580C] border-[#EA580C] text-white'
-                    : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                Transfer / QRIS
-              </button>
+
+              {paymentSettings.qrEnabled && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setPaymentMethod('qr');
+                  }}
+                  className={`min-h-[46px] px-4 py-2.5 rounded-xl font-semibold text-sm border inline-flex items-center justify-center gap-2 transition-colors cursor-pointer ${
+                    paymentMethod === 'qr'
+                      ? 'bg-[#EA580C] border-[#EA580C] text-white'
+                      : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <QrCode className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>Bayar QR</span>
+                </button>
+              )}
+
+              {paymentSettings.bankEnabled && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setPaymentMethod('transfer');
+                  }}
+                  className={`min-h-[46px] px-4 py-2.5 rounded-xl font-semibold text-sm border inline-flex items-center justify-center gap-2 transition-colors cursor-pointer ${
+                    paymentMethod === 'transfer'
+                      ? 'bg-[#EA580C] border-[#EA580C] text-white'
+                      : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <Building2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>Transfer Bank</span>
+                </button>
+              )}
             </div>
 
-            {paymentMethod === 'transfer' && (
-              <div className="mt-3 rounded-xl bg-[#FEFBE8] border border-[#FDE68A] p-4 space-y-3">
-                <div className="flex items-start gap-3">
-                  <QrCode className="h-5 w-5 text-[#C2410C] shrink-0 mt-0.5" aria-hidden="true" />
-                  <div className="text-xs text-slate-700 space-y-1">
-                    <p className="font-semibold text-[#111827]">Rekening / QRIS Gerai PrintKilat</p>
-                    <p>BCA 7710-4429-18 a.n. Gerai Fotokopi Kampus</p>
-                    <p className="text-slate-500">Bukti transfer dapat diunggah sekarang atau menyusul lewat halaman Lacak.</p>
+            {requiresPaymentProof(paymentMethod) && (
+              <div className="mt-3 rounded-xl bg-[#FEFBE8] border border-[#FDE68A] p-4 space-y-4">
+                {paymentMethod === 'qr' ? (
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-2.5">
+                      <QrCode className="h-5 w-5 text-[#C2410C] shrink-0 mt-0.5" aria-hidden="true" />
+                      <div className="text-xs text-slate-700 space-y-0.5">
+                        <p className="font-bold text-sm text-[#111827]">{paymentSettings.qrLabel}</p>
+                        <p>Pindai kode QR di bawah lalu unggah bukti pembayarannya sebelum mengirim pesanan.</p>
+                      </div>
+                    </div>
+
+                    {paymentSettings.qrImageBase64 && paymentSettings.qrImageMimeType ? (
+                      <div className="rounded-xl bg-white border border-amber-200 p-4 flex flex-col items-center gap-3">
+                        <img
+                          src={`data:${paymentSettings.qrImageMimeType};base64,${paymentSettings.qrImageBase64}`}
+                          alt={paymentSettings.qrLabel}
+                          className="max-h-56 w-auto rounded-lg object-contain"
+                        />
+                        <a
+                          href={`data:${paymentSettings.qrImageMimeType};base64,${paymentSettings.qrImageBase64}`}
+                          download={paymentSettings.qrImageOriginalName || 'qr-pembayaran-printkilat.png'}
+                          className="min-h-[36px] px-3.5 py-1.5 rounded-lg border border-amber-300 bg-[#FEFBE8] hover:bg-amber-100 text-xs font-semibold text-[#9A3412] inline-flex items-center gap-1.5"
+                        >
+                          <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span>Unduh Gambar QR</span>
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="rounded-xl bg-white border border-amber-200 p-3 text-xs text-amber-900">
+                        Gambar QR statis gerai belum diunggah oleh admin. Silakan scan QR fisik di meja kasir gerai atau pilih Transfer Bank / Tunai.
+                      </div>
+                    )}
                   </div>
-                </div>
-                <div>
+                ) : (
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2.5">
+                      <Building2 className="h-5 w-5 text-[#C2410C] shrink-0 mt-0.5" aria-hidden="true" />
+                      <div className="text-xs text-slate-700 space-y-1">
+                        <p className="font-bold text-sm text-[#111827]">
+                          Transfer Bank {paymentSettings.bankName}
+                        </p>
+                        <p className="font-mono text-sm font-bold text-[#111827] tabular-nums">
+                          {paymentSettings.bankAccountNumber}
+                        </p>
+                        <p>a.n. {paymentSettings.bankAccountHolder}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => copyText(paymentSettings.bankAccountNumber, 'bank')}
+                      className="min-h-[36px] px-3 py-1.5 rounded-lg border border-amber-300 bg-white hover:bg-amber-50 text-xs font-semibold text-[#111827] inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
+                    >
+                      {copiedKey === 'bank' ? (
+                        <>
+                          <Check className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />
+                          <span>Disalin</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span>Salin</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {paymentSettings.paymentNote && (
+                  <p className="text-xs text-slate-600">{paymentSettings.paymentNote}</p>
+                )}
+
+                {/* Mandatory Proof Upload */}
+                <div className="pt-3 border-t border-amber-200/80 space-y-2.5">
+                  <label htmlFor="proof-upload-input" className="block text-xs font-bold text-[#111827]">
+                    {paymentMethod === 'qr'
+                      ? 'Bukti Pembayaran QR (Wajib)'
+                      : 'Bukti Transfer Bank (Wajib)'}
+                  </label>
                   <input
                     ref={proofInputRef}
                     type="file"
@@ -505,13 +672,52 @@ export function CreateOrderView({
                     className="sr-only"
                     id="proof-upload-input"
                   />
-                  <button
-                    type="button"
-                    onClick={() => proofInputRef.current?.click()}
-                    className="min-h-[40px] px-3.5 py-2 rounded-lg border border-amber-300 bg-white text-xs font-semibold text-[#111827] hover:bg-amber-50 cursor-pointer"
-                  >
-                    {proofFile ? `Bukti dipilih: ${proofFile.name}` : 'Unggah bukti transfer (opsional)'}
-                  </button>
+
+                  {proofFile && proofPreviewUrl ? (
+                    <div className="rounded-xl bg-white border border-amber-200 p-3 flex flex-col sm:flex-row items-center gap-3">
+                      <img
+                        src={proofPreviewUrl}
+                        alt="Pratinjau bukti pembayaran"
+                        className="h-20 w-20 rounded-lg border border-slate-200 object-cover shrink-0"
+                      />
+                      <div className="min-w-0 flex-1 text-center sm:text-left">
+                        <p className="text-xs font-bold text-[#111827] truncate">{proofFile.name}</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          {formatFileSize(proofFile.size)} · Siap dikirim ke operator
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => proofInputRef.current?.click()}
+                          className="min-h-[36px] px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-[#111827] cursor-pointer"
+                        >
+                          Ganti
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleClearProof}
+                          aria-label="Hapus bukti pembayaran"
+                          className="min-h-[36px] min-w-[36px] rounded-lg border border-red-200 bg-white hover:bg-red-50 flex items-center justify-center text-red-600 cursor-pointer"
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => proofInputRef.current?.click()}
+                      className="w-full min-h-[54px] px-4 py-3 rounded-xl border-2 border-dashed border-amber-300 bg-white hover:bg-amber-50/70 text-xs font-semibold text-[#111827] flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <ImageIcon className="h-4 w-4 text-[#C2410C]" aria-hidden="true" />
+                      <span>
+                        {paymentMethod === 'qr'
+                          ? 'Unggah screenshot / foto bukti bayar QR (wajib)'
+                          : 'Unggah screenshot / foto bukti transfer (wajib)'}
+                      </span>
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -521,7 +727,7 @@ export function CreateOrderView({
           <div className="flex items-start gap-2.5 text-xs text-slate-500 pt-1">
             <ShieldCheck className="h-4 w-4 text-[#EA580C] shrink-0 mt-0.5" aria-hidden="true" />
             <p>
-              File disimpan di folder terproteksi, hanya dapat diakses operator gerai, dan dihapus otomatis setelah 7 hari.
+              Berkas tersimpan aman di database terproteksi, hanya dapat diakses operator gerai, dan dijadwalkan kedaluwarsa dalam 7 hari.
             </p>
           </div>
 
@@ -566,7 +772,7 @@ export function CreateOrderView({
             disabled={submitting}
             className="w-full min-h-[48px] px-6 py-3 rounded-xl bg-[#EA580C] hover:bg-[#C2410C] text-white font-bold text-base transition-colors disabled:opacity-60 cursor-pointer"
           >
-            {submitting ? 'Mengirim Pesanan...' : 'Kirim Pesanan'}
+            {submitting ? 'Mengirim ke Database...' : 'Kirim Pesanan'}
           </button>
         </aside>
       </div>

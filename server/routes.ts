@@ -344,18 +344,10 @@ export function createApiRouter(): express.Router {
          WHERE order_id = ?`
       ).run(req.file.filename, req.file.originalname, nowIso, order.id);
 
-      res.json({ order: getOrderById(order.id) });
+      res.json({ order: getOrderById(Number(order.id)) });
     }
   );
 
-  router.post('/orders/batch-summary', (req, res) => {
-    const codes = Array.isArray(req.body?.trackingCodes) ? req.body.trackingCodes : [];
-    const results = codes
-      .slice(0, 20)
-      .map((c: unknown) => getOrderByTrackingCode(String(c || '')))
-      .filter((item: OrderDetail | null): item is OrderDetail => Boolean(item));
-    res.json({ orders: results });
-  });
 
   // --- OPERATOR AUTH ROUTES ---
 
@@ -394,6 +386,7 @@ export function createApiRouter(): express.Router {
     });
     setOperatorCookie(res, token);
     res.json({
+      token,
       operator: {
         id: op.id,
         email: op.email,
@@ -507,7 +500,7 @@ export function createApiRouter(): express.Router {
       throw err;
     }
 
-    res.json({ order: getOrderById(order.id) });
+    res.json({ order: getOrderById(Number(order.id)) });
   });
 
   router.patch('/operator/orders/:id/payment', requireOperatorAuth, (req: AuthedRequest, res) => {
@@ -531,7 +524,7 @@ export function createApiRouter(): express.Router {
        WHERE order_id = ?`
     ).run(operatorId, nowIso, nowIso, order.id);
 
-    res.json({ order: getOrderById(order.id) });
+    res.json({ order: getOrderById(Number(order.id)) });
   });
 
   router.get('/operator/orders/:id/file', requireOperatorAuth, (req, res) => {

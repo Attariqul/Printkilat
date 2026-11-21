@@ -6,14 +6,14 @@ export type OrderStatus =
   | 'completed'
   | 'rejected';
 
-export type PaymentMethod = 'cash' | 'transfer';
+export type PaymentMethod = 'cash' | 'qr' | 'transfer';
 export type PaymentStatus = 'unpaid' | 'pending_verification' | 'paid';
 export type TariffCategory = 'cetak' | 'jilid';
 export type PaperSize = 'A4' | 'F4' | null;
 export type ColorMode = 'BW' | 'Color' | null;
 
 export interface ServiceTariff {
-  id: number;
+  id: string;
   name: string;
   category: TariffCategory;
   paperSize: PaperSize;
@@ -23,8 +23,22 @@ export interface ServiceTariff {
   updatedAt: string;
 }
 
+export interface PaymentSettings {
+  qrEnabled: boolean;
+  qrLabel: string;
+  qrImageBase64: string | null;
+  qrImageMimeType: string | null;
+  qrImageOriginalName: string | null;
+  bankEnabled: boolean;
+  bankName: string;
+  bankAccountNumber: string;
+  bankAccountHolder: string;
+  paymentNote: string | null;
+  updatedAt: string;
+}
+
 export interface OrderStatusLogItem {
-  id: number;
+  id: string | number;
   fromStatus: OrderStatus | null;
   toStatus: OrderStatus;
   note: string | null;
@@ -33,7 +47,7 @@ export interface OrderStatusLogItem {
 }
 
 export interface OrderDetail {
-  id: number;
+  id: string;
   queueNumber: string;
   trackingCode: string;
   customerName: string;
@@ -46,14 +60,14 @@ export interface OrderDetail {
   updatedAt: string;
   fileExpiresAt: string;
   item: {
-    printTariffId: number;
+    printTariffId: string;
     printTariffName: string;
     paperSize: PaperSize;
     colorMode: ColorMode;
     printUnitPrice: number;
     pageCount: number;
     copies: number;
-    bindTariffId: number | null;
+    bindTariffId: string | null;
     bindTariffName: string;
     bindUnitPrice: number;
     subtotalPrint: number;
@@ -64,6 +78,7 @@ export interface OrderDetail {
     mimeType: string;
     fileSizeBytes: number;
     detectedPages: number | null;
+    chunkCount?: number;
     deletedAt: string | null;
   };
   payment: {
@@ -90,6 +105,7 @@ export interface PricingBreakdown {
 }
 
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+export const FILE_CHUNK_RAW_BYTES = 450 * 1024;
 export const ALLOWED_EXTENSIONS = ['.pdf', '.doc', '.docx'] as const;
 
 export const ORDER_STEPS: readonly OrderStatus[] = [
@@ -146,6 +162,19 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`;
 }
 
+export function getJakartaDateYYYYMMDD(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const year = parts.find((p) => p.type === 'year')?.value ?? '2026';
+  const month = parts.find((p) => p.type === 'month')?.value ?? '01';
+  const day = parts.find((p) => p.type === 'day')?.value ?? '01';
+  return `${year}${month}${day}`;
+}
+
 export function formatQueueNumber(dateYYYYMMDD: string, sequence: number): string {
   const cleanDate = dateYYYYMMDD.replace(/[^0-9]/g, '').slice(0, 8);
   if (cleanDate.length !== 8) {
@@ -165,6 +194,43 @@ export function buildTrackingCode(randomValues: Uint8Array | number[]): string {
     suffix += alphabet[val % alphabet.length];
   }
   return `PK-TRK-${suffix}`;
+}
+
+export function calculateChunkCount(fileSizeBytes: number): number {
+  if (!Number.isFinite(fileSizeBytes) || fileSizeBytes <= 0) return 0;
+  return Math.ceil(fileSizeBytes / FILE_CHUNK_RAW_BYTES);
+}
+
+export function slugifyTariffId(name: string, suffix = ''): string {
+  const base = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+  const cleanSuffix = suffix.replace(/[^a-zA-Z0-9_-]/g, '');
+  const id = [base || 'tarif', cleanSuffix].filter(Boolean).join('-');
+  return id.slice(0, 100);
+}
+
+export function requiresPaymentProof(method: PaymentMethod): boolean {
+  return method === 'qr' || method === 'transfer';
+}
+
+export function validateOrderPaymentInput(
+  method: PaymentMethod,
+  hasProofFile: boolean
+): { ok: boolean; error?: string } {
+  if (requiresPaymentProof(method) && !hasProofFile) {
+    return {
+      ok: false,
+      error:
+        method === 'qr'
+          ? 'Bukti pembayaran QR wajib diunggah sebelum mengirim pesanan.'
+          : 'Bukti transfer bank wajib diunggah sebelum mengirim pesanan.',
+    };
+  }
+  return { ok: true };
 }
 
 export function canTransitionStatus(
@@ -226,7 +292,14 @@ export function getShortStatusLabel(status: OrderStatus): string {
 }
 
 export function getPaymentMethodLabel(method: PaymentMethod): string {
-  return method === 'cash' ? 'Tunai di tempat' : 'Transfer / QRIS';
+  switch (method) {
+    case 'cash':
+      return 'Tunai di tempat';
+    case 'qr':
+      return 'QR / QRIS';
+    case 'transfer':
+      return 'Transfer Bank';
+  }
 }
 
 export function getPaymentStatusLabel(status: PaymentStatus): string {

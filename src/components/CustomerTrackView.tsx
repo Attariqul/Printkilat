@@ -17,23 +17,19 @@ import {
   ORDER_STEPS,
   type OrderDetail,
 } from '../shared/printLogic';
-import { trackOrder, uploadTransferProof } from '../utils/api';
+import { formatReadableError, trackOrder, uploadTransferProof } from '../utils/api';
 import { PaymentStatusTag, StatusBadge } from './StatusBadge';
 
 interface CustomerTrackViewProps {
   initialCode?: string;
-  savedCodes: string[];
   onBack: () => void;
-  onCodeFound: (code: string) => void;
 }
 
 export function CustomerTrackView({
   initialCode = '',
-  savedCodes,
   onBack,
-  onCodeFound,
 }: CustomerTrackViewProps) {
-  const [codeInput, setCodeInput] = useState(initialCode || savedCodes[0] || '');
+  const [codeInput, setCodeInput] = useState(initialCode);
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +39,8 @@ export function CustomerTrackView({
   async function lookupCode(codeToFetch: string) {
     const clean = codeToFetch.trim().toUpperCase();
     if (!clean) {
-      setError('Masukkan kode pelacakan pesanan (contoh: PK-TRK-DEMO0002).');
+      setOrder(null);
+      setError('Masukkan kode khusus pelacakan pesanan (format: PK-TRK-XXXXXXXX).');
       return;
     }
     setLoading(true);
@@ -51,10 +48,9 @@ export function CustomerTrackView({
     try {
       const found = await trackOrder(clean);
       setOrder(found);
-      onCodeFound(found.trackingCode);
     } catch (err) {
       setOrder(null);
-      setError(err instanceof Error ? err.message : 'Pesanan tidak ditemukan.');
+      setError(formatReadableError(err, 'Pesanan tidak ditemukan.'));
     } finally {
       setLoading(false);
     }
@@ -64,11 +60,11 @@ export function CustomerTrackView({
     if (initialCode) {
       setCodeInput(initialCode);
       void lookupCode(initialCode);
-    } else if (savedCodes[0]) {
-      setCodeInput(savedCodes[0]);
-      void lookupCode(savedCodes[0]);
+    } else {
+      setCodeInput('');
+      setOrder(null);
+      setError(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCode]);
 
   function handleSubmit(e: FormEvent) {
@@ -85,7 +81,7 @@ export function CustomerTrackView({
       const updated = await uploadTransferProof(order.trackingCode, file);
       setOrder(updated);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal mengunggah bukti transfer.');
+      setError(formatReadableError(err, 'Gagal mengunggah bukti transfer.'));
     } finally {
       setUploadingProof(false);
     }
@@ -120,7 +116,7 @@ export function CustomerTrackView({
         className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-3"
       >
         <label htmlFor="tracking-code-input" className="block text-sm font-semibold text-[#111827]">
-          Kode Pelacakan (PK-TRK-XXXXXXXX)
+          Kode Khusus Pelacakan (PK-TRK-XXXXXXXX)
         </label>
         <div className="flex flex-col sm:flex-row gap-2.5">
           <div className="relative flex-1">
@@ -146,25 +142,9 @@ export function CustomerTrackView({
           </button>
         </div>
 
-        {/* Saved / Demo Tracking Code Quick Selectors */}
-        <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-          <span className="text-slate-500">Tersimpan / Contoh:</span>
-          {Array.from(new Set([...savedCodes, 'PK-TRK-DEMO0001', 'PK-TRK-DEMO0002', 'PK-TRK-DEMO0003']))
-            .slice(0, 4)
-            .map((code) => (
-              <button
-                key={code}
-                type="button"
-                onClick={() => {
-                  setCodeInput(code);
-                  void lookupCode(code);
-                }}
-                className="min-h-[32px] px-2.5 py-1 rounded-lg bg-[#FEFBE8] border border-[#FDE68A] hover:border-orange-400 font-mono font-semibold text-[#111827] cursor-pointer"
-              >
-                {code}
-              </button>
-            ))}
-        </div>
+        <p className="text-xs text-slate-500">
+          Status dan detail pesanan hanya dapat dibuka menggunakan kode khusus yang diberikan saat pesanan dibuat atau melalui QR Code struk.
+        </p>
       </form>
 
       {error && (
@@ -318,7 +298,7 @@ export function CustomerTrackView({
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="text-slate-500">Bukti transfer</dt>
+                  <dt className="text-slate-500">Bukti pembayaran</dt>
                   <dd className="font-medium text-[#111827]">
                     {order.payment.hasProof ? order.payment.proofOriginalName : 'Belum diunggah'}
                   </dd>
@@ -335,32 +315,35 @@ export function CustomerTrackView({
                 </div>
               </dl>
 
-              {order.payment.method === 'transfer' && order.payment.status !== 'paid' && (
-                <div className="pt-2">
-                  <input
-                    ref={proofInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleProofUpload}
-                    className="sr-only"
-                  />
-                  <button
-                    type="button"
-                    disabled={uploadingProof}
-                    onClick={() => proofInputRef.current?.click()}
-                    className="w-full min-h-[42px] px-4 py-2 rounded-xl border border-[#EA580C] text-[#C2410C] hover:bg-orange-50 text-xs font-semibold inline-flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <Upload className="h-4 w-4" aria-hidden="true" />
-                    <span>
-                      {uploadingProof
-                        ? 'Mengunggah...'
-                        : order.payment.hasProof
-                        ? 'Ganti bukti transfer'
-                        : 'Unggah bukti transfer'}
-                    </span>
-                  </button>
-                </div>
-              )}
+              {(order.payment.method === 'qr' || order.payment.method === 'transfer') &&
+                order.payment.status !== 'paid' &&
+                order.status !== 'completed' &&
+                order.status !== 'rejected' && (
+                  <div className="pt-2">
+                    <input
+                      ref={proofInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleProofUpload}
+                      className="sr-only"
+                    />
+                    <button
+                      type="button"
+                      disabled={uploadingProof}
+                      onClick={() => proofInputRef.current?.click()}
+                      className="w-full min-h-[42px] px-4 py-2 rounded-xl border border-[#EA580C] text-[#C2410C] hover:bg-orange-50 text-xs font-semibold inline-flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Upload className="h-4 w-4" aria-hidden="true" />
+                      <span>
+                        {uploadingProof
+                          ? 'Mengunggah...'
+                          : order.payment.hasProof
+                          ? 'Ganti bukti pembayaran'
+                          : 'Unggah bukti pembayaran'}
+                      </span>
+                    </button>
+                  </div>
+                )}
 
               {/* Activity log */}
               <div className="pt-3 border-t border-slate-100 space-y-2">
