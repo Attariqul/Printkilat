@@ -82,6 +82,18 @@ export function CreateOrderView({
   }, [paymentMethod, paymentSettings.qrEnabled, paymentSettings.bankEnabled]);
 
   useEffect(() => {
+    if (!printTariffId && printTariffs.length > 0) {
+      setPrintTariffId(printTariffs[0].id);
+    }
+  }, [printTariffId, printTariffs]);
+
+  useEffect(() => {
+    if (!bindTariffId && bindTariffs.length > 0) {
+      setBindTariffId(bindTariffs[0].id);
+    }
+  }, [bindTariffId, bindTariffs]);
+
+  useEffect(() => {
     if (!proofFile) {
       setProofPreviewUrl(null);
       return;

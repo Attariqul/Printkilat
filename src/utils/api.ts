@@ -814,7 +814,7 @@ export async function resolveOperatorFromFirebaseUser(
 ): Promise<OperatorUser | null> {
   if (!user || !user.emailVerified) return null;
 
-  if (user.email === BOOTSTRAPPED_ADMIN_EMAIL) {
+  if (user.email && user.email.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase()) {
     return {
       id: user.uid,
       email: user.email,

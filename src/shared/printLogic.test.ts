@@ -6,9 +6,13 @@ import {
   calculateOrderTotal,
   canTransitionStatus,
   FILE_CHUNK_RAW_BYTES,
+  formatFileSize,
   formatQueueNumber,
   formatRupiah,
+  getJakartaDateYYYYMMDD,
   getPaymentMethodLabel,
+  getShortStatusLabel,
+  getStatusLabel,
   getStatusStepIndex,
   requiresPaymentProof,
   slugifyTariffId,
@@ -112,4 +116,64 @@ test('validateOrderPaymentInput requires payment proof for qr and transfer but n
 
   assert.equal(getPaymentMethodLabel('qr'), 'QR / QRIS');
   assert.equal(getPaymentMethodLabel('transfer'), 'Transfer Bank');
+});
+
+test('getJakartaDateYYYYMMDD returns YYYYMMDD string format', () => {
+  const d = new Date('2026-11-22T02:00:00Z');
+  const str = getJakartaDateYYYYMMDD(d);
+  assert.equal(str.length, 8);
+  assert.match(str, /^[0-9]{8}$/);
+});
+
+test('formatFileSize formats bytes, KB, and MB accurately', () => {
+  assert.equal(formatFileSize(0), '0 KB');
+  assert.equal(formatFileSize(-100), '0 KB');
+  assert.equal(formatFileSize(500), '1 KB');
+  assert.equal(formatFileSize(1024), '1 KB');
+  assert.equal(formatFileSize(150 * 1024), '150 KB');
+  assert.equal(formatFileSize(1024 * 1024), '1,0 MB');
+  assert.equal(formatFileSize(5 * 1024 * 1024), '5,0 MB');
+});
+
+test('canTransitionStatus enforces complete state machine and terminal states', () => {
+  // Valid forward paths
+  assert.equal(canTransitionStatus('pending', 'confirmed').ok, true);
+  assert.equal(canTransitionStatus('confirmed', 'printing').ok, true);
+  assert.equal(canTransitionStatus('printing', 'ready').ok, true);
+  assert.equal(canTransitionStatus('ready', 'completed').ok, true);
+
+  // Valid rejection from active states with reason >= 3 chars
+  assert.equal(canTransitionStatus('pending', 'rejected', 'Alasan penolakan').ok, true);
+  assert.equal(canTransitionStatus('confirmed', 'rejected', 'Alasan penolakan').ok, true);
+  assert.equal(canTransitionStatus('printing', 'rejected', 'Alasan penolakan').ok, true);
+
+  // Ready cannot be rejected
+  assert.equal(canTransitionStatus('ready', 'rejected', 'Alasan penolakan').ok, false);
+
+  // Terminal states cannot transition to anything
+  assert.equal(canTransitionStatus('completed', 'pending').ok, false);
+  assert.equal(canTransitionStatus('completed', 'confirmed').ok, false);
+  assert.equal(canTransitionStatus('completed', 'rejected').ok, false);
+  assert.equal(canTransitionStatus('rejected', 'pending').ok, false);
+  assert.equal(canTransitionStatus('rejected', 'confirmed').ok, false);
+
+  // Same status transition rejected
+  assert.equal(canTransitionStatus('pending', 'pending').ok, false);
+});
+
+test('formatQueueNumber handles varied sequence numbers correctly', () => {
+  assert.equal(formatQueueNumber('20261122', 1), 'PK-20261122-001');
+  assert.equal(formatQueueNumber('20261122', 99), 'PK-20261122-099');
+  assert.equal(formatQueueNumber('20261122', 100), 'PK-20261122-100');
+  assert.equal(formatQueueNumber('20261122', 1234), 'PK-20261122-1234');
+});
+
+test('getStatusLabel and getShortStatusLabel provide friendly Indonesian labels for all statuses', () => {
+  const statuses = ['pending', 'confirmed', 'printing', 'ready', 'completed', 'rejected'] as const;
+  for (const st of statuses) {
+    assert.equal(typeof getStatusLabel(st), 'string');
+    assert.equal(getStatusLabel(st).length > 0, true);
+    assert.equal(typeof getShortStatusLabel(st), 'string');
+    assert.equal(getShortStatusLabel(st).length > 0, true);
+  }
 });
