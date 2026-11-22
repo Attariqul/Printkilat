@@ -47,7 +47,7 @@
 
 Pelanggan dapat melihat tarif, mengisi detail pekerjaan cetak, mengunggah dokumen, menentukan metode pembayaran, memperoleh nomor antrean dan kode pelacakan, serta memantau perkembangan pesanan. Operator menggunakan portal terpisah untuk mengelola antrean, tarif, pembayaran, dan proses pengerjaan.
 
-Repository saat ini memuat implementasi frontend React/TypeScript dengan backend Express/TypeScript, penyimpanan SQLite lokal pada backend, serta integrasi Firebase Authentication dan Cloud Firestore pada frontend. Terdapat pula direktori aplikasi Flask terpisah di repository; konfigurasi dan dependensinya tetap disertakan, tetapi jalur aplikasi utama yang dijalankan oleh script npm adalah server Express.
+Frontend React/TypeScript saat ini menggunakan Firebase Authentication dan Cloud Firestore secara langsung melalui Firebase SDK untuk alur autentikasi, tarif, pengaturan pembayaran, dan pesanan. Repository juga menyertakan API Express/TypeScript terpisah dengan SQLite dan penyimpanan berkas lokal, serta aplikasi Flask/Python terpisah. Ketiga jalur ini tidak boleh diasumsikan berbagi atau menyinkronkan penyimpanan secara otomatis. Script npm `dev` menjalankan server Express, sedangkan UI React membaca dan menulis data operasional melalui Firestore.
 
 > **Status proyek:** dalam pengembangan. Periksa konfigurasi deployment dan layanan yang benar-benar aktif sebelum menggunakan aplikasi untuk operasional produksi.
 
@@ -112,21 +112,27 @@ flowchart TB
     C["Pelanggan"] --> UI["Frontend React 19 + TypeScript"]
     O["Operator"] --> UI
     UI --> AUTH["Firebase Authentication<br/>Google Sign-In"]
-    UI --> FS[("Cloud Firestore<br/>tarif, pengaturan, pesanan")]
-    UI --> API["Express API<br/>server/routes.ts"]
-    API --> DB[("SQLite<br/>server/db.ts")]
-    API --> FILES[("Protected Uploads<br/>dokumen & bukti bayar")]
-    API --> PDF["pdf-lib<br/>deteksi halaman / PDF"]
-    subgraph Hosting["Pilihan hosting yang dikonfigurasi"]
-      NETLIFY["Netlify<br/>Static build + Function"]
-      VERCEL["Vercel<br/>konfigurasi serverless"]
+    UI --> FS[("Cloud Firestore<br/>tarif, pengaturan, pesanan, file chunks")]
+    subgraph ExpressPath["Jalur API Express terpisah"]
+      CLIENT["HTTP API client"] --> API["Express API<br/>server/routes.ts"]
+      API --> DB[("SQLite<br/>server/db.ts")]
+      API --> FILES[("Protected Uploads<br/>dokumen & bukti bayar")]
+      API --> PDF["pdf-lib<br/>deteksi halaman / PDF"]
+    end
+    subgraph FlaskPath["Jalur aplikasi Flask terpisah"]
+      FLASK["Flask app<br/>run.py / api/index.py"] --> SQLA["Flask-SQLAlchemy"]
+      SQLA --> FLASKDB[("Database sesuai config.py")]
+    end
+    subgraph Hosting["Adapter hosting yang tersedia"]
+      NETLIFY["Netlify<br/>React build + Express Function"]
+      VERCEL["Vercel<br/>Python Flask Function"]
     end
     UI -. "hasil build dist" .-> NETLIFY
-    API -. "adapter API" .-> NETLIFY
-    API -. "konfigurasi serverless" .-> VERCEL
+    API -. "adapter Netlify" .-> NETLIFY
+    FLASK -. "runtime Python" .-> VERCEL
 ```
 
-**Catatan:** repository juga berisi aplikasi Flask (`app/`, `run.py`, `config.py`, `requirements.txt`) dan adapter `api/index.py`. Keduanya tidak menjadi entry point script npm utama. Pastikan memilih satu jalur deployment secara sadar dan jangan menganggap data SQLite pada filesystem sementara serverless bersifat persisten.
+**Catatan penting:** diagram memisahkan tiga jalur implementasi. Frontend React menggunakan Firebase SDK secara langsung; tidak ada indikasi pada `src/utils/api.ts` bahwa alur UI utamanya memanggil endpoint Express. Express API menggunakan SQLite dan file lokal, sementara Flask merupakan aplikasi alternatif berbasis SQLAlchemy. Adapter Netlify disediakan untuk Express; adapter Vercel yang terdaftar pada `vercel.json` menunjuk ke aplikasi Flask. Data di Firestore, SQLite Express, dan database Flask tidak otomatis saling tersinkronisasi. Pastikan satu jalur dipilih dan diuji secara menyeluruh sebelum deployment.
 
 ## Diagram Use Case
 
@@ -344,7 +350,7 @@ flowchart TD
 | `counters/{dateKey}` | Pencacah nomor antrean harian. |
 | `operators/{uid}` | Profil otorisasi operator. |
 
-Aturan keamanan Firestore mengatur pembacaan daftar pesanan untuk operator, validasi struktur dokumen, pembatasan perubahan status, serta isolasi data kontak dan berkas. Implementasi route Express saat ini tetap menggunakan SQLite dan direktori berkas lokal; pemilihan backend aktif perlu diperhatikan ketika membaca diagram ini.
+Aturan keamanan Firestore mengatur pembacaan daftar pesanan untuk operator, validasi struktur dokumen, pembatasan perubahan status, serta isolasi data kontak dan berkas. Frontend React menggunakan jalur Firestore ini. Route Express yang berada di `server/routes.ts` adalah implementasi API tersendiri yang saat ini menggunakan SQLite dan direktori berkas lokal.
 
 ## Teknologi
 
