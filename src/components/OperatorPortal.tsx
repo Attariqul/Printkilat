@@ -20,10 +20,11 @@ import {
 import { OperatorOrderDetailView } from './OperatorOrderDetailView';
 import { OperatorPaymentSettingsView } from './OperatorPaymentSettingsView';
 import { OperatorTariffManagerView } from './OperatorTariffManagerView';
+import { OperatorStaffManagerView } from './OperatorStaffManagerView';
 import { QrAccessModal } from './QrCodeDisplay';
 import { PaymentStatusTag, StatusBadge } from './StatusBadge';
 
-export type OperatorTab = 'queue' | 'tariffs' | 'payment' | 'history';
+export type OperatorTab = 'queue' | 'tariffs' | 'payment' | 'history' | 'staff';
 
 interface OperatorPortalProps {
   operator: OperatorUser;
@@ -215,6 +216,20 @@ export function OperatorPortal({
             </button>
             <button
               type="button"
+              onClick={() => {
+                setSelectedOrderId(null);
+                setActiveTab('staff');
+              }}
+              className={`min-h-[36px] px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                activeTab === 'staff'
+                  ? 'bg-white/20 text-white'
+                  : 'text-orange-50 hover:bg-white/10'
+              }`}
+            >
+              Petugas
+            </button>
+            <button
+              type="button"
               onClick={() => setShowQrModal(true)}
               className="min-h-[36px] px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold text-orange-50 hover:bg-white/15 inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
             >
@@ -268,6 +283,8 @@ export function OperatorPortal({
             settings={paymentSettings}
             onSettingsUpdated={onPaymentSettingsChanged}
           />
+        ) : activeTab === 'staff' ? (
+          <OperatorStaffManagerView currentAdminEmail={operator.email} />
         ) : activeTab === 'history' ? (
           <div className="space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

@@ -1,6 +1,7 @@
 import { signInWithPopup, signOut, type User } from 'firebase/auth';
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -52,6 +53,13 @@ export interface OperatorUser {
   email: string;
   name: string;
   role?: string;
+}
+
+export interface OperatorWhitelistItem {
+  email: string;
+  name: string;
+  role: 'operator' | 'owner';
+  createdAt: string;
 }
 
 export interface OperatorOrdersResponse {
@@ -125,8 +133,21 @@ export class ApiError extends Error {
 
 export function formatReadableError(err: unknown, fallback = 'Terjadi kesalahan.'): string {
   if (!(err instanceof Error)) return fallback;
+  const msg = err.message || '';
+
+  if (msg.includes('auth/unauthorized-domain')) {
+    const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'domain ini';
+    return `Domain (${currentHost}) belum didaftarkan di Firebase. Silakan tambahkan "${currentHost}" di Firebase Console -> Authentication -> Settings -> Authorized domains.`;
+  }
+  if (msg.includes('auth/popup-closed-by-user')) {
+    return 'Jendela masuk Google ditutup sebelum proses selesai. Silakan coba klik tombol masuk kembali.';
+  }
+  if (msg.includes('auth/network-request-failed')) {
+    return 'Gagal terhubung ke server autentikasi Firebase. Periksa koneksi internet Anda.';
+  }
+
   try {
-    const parsed = JSON.parse(err.message) as { error?: string };
+    const parsed = JSON.parse(msg) as { error?: string };
     if (parsed && typeof parsed.error === 'string') {
       if (parsed.error.toLowerCase().includes('missing or insufficient permissions')) {
         return 'Akses ditolak oleh aturan keamanan database. Pastikan bukti bayar/kode/akun operator Anda valid.';
@@ -136,7 +157,7 @@ export function formatReadableError(err: unknown, fallback = 'Terjadi kesalahan.
   } catch {
     // Plain error message
   }
-  return err.message || fallback;
+  return msg || fallback;
 }
 
 interface CanonicalTariffSeed {
@@ -825,19 +846,38 @@ export async function resolveOperatorFromFirebaseUser(
 
   try {
     const opSnap = await getDoc(doc(db, 'operators', user.uid));
-    if (!opSnap.exists()) {
+    if (opSnap.exists()) {
+      const data = opSnap.data();
+      return {
+        id: user.uid,
+        email: String(data.email ?? user.email ?? ''),
+        name: String(data.name ?? user.displayName ?? 'Operator Gerai'),
+        role: String(data.role ?? 'operator'),
+      };
+    }
+  } catch {
+    // continue to whitelist check
+  }
+
+  if (user.email) {
+    try {
+      const cleanEmail = user.email.trim().toLowerCase();
+      const wlSnap = await getDoc(doc(db, 'operator_whitelist', cleanEmail));
+      if (wlSnap.exists()) {
+        const data = wlSnap.data();
+        return {
+          id: user.uid,
+          email: String(data.email ?? user.email ?? cleanEmail),
+          name: String(data.name ?? user.displayName ?? 'Operator Gerai'),
+          role: String(data.role ?? 'operator'),
+        };
+      }
+    } catch {
       return null;
     }
-    const data = opSnap.data();
-    return {
-      id: user.uid,
-      email: String(data.email ?? user.email ?? ''),
-      name: String(data.name ?? user.displayName ?? 'Operator Gerai'),
-      role: String(data.role ?? 'operator'),
-    };
-  } catch {
-    return null;
   }
+
+  return null;
 }
 
 export async function operatorLoginWithGoogle(): Promise<OperatorUser> {
@@ -1113,5 +1153,60 @@ export async function updateServiceTariff(
   } catch (err) {
     if (err instanceof ApiError) throw err;
     handleFirestoreError(err, OperationType.UPDATE, `tariffs/${id}`);
+  }
+}
+
+export async function fetchOperatorWhitelist(): Promise<OperatorWhitelistItem[]> {
+  try {
+    const snap = await getDocs(query(collection(db, 'operator_whitelist'), orderBy('createdAt', 'desc')));
+    const items: OperatorWhitelistItem[] = snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        email: d.id,
+        name: String(data.name || d.id.split('@')[0] || 'Petugas Gerai'),
+        role: (data.role === 'owner' ? 'owner' : 'operator') as 'operator' | 'owner',
+        createdAt: timestampToIso(data.createdAt),
+      };
+    });
+    return items;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.LIST, 'operator_whitelist');
+  }
+}
+
+export async function addOperatorEmails(
+  entries: { email: string; name?: string; role?: 'operator' | 'owner' }[]
+): Promise<OperatorWhitelistItem[]> {
+  if (entries.length === 0) return await fetchOperatorWhitelist();
+
+  const batch = writeBatch(db);
+  for (const entry of entries) {
+    const cleanEmail = entry.email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) continue;
+    const ref = doc(db, 'operator_whitelist', cleanEmail);
+    const cleanName = (entry.name?.trim() || cleanEmail.split('@')[0] || 'Petugas Gerai').slice(0, 100);
+    batch.set(ref, {
+      email: cleanEmail,
+      name: cleanName,
+      role: entry.role || 'operator',
+      createdAt: serverTimestamp(),
+    });
+  }
+
+  try {
+    await batch.commit();
+    return await fetchOperatorWhitelist();
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, 'operator_whitelist');
+  }
+}
+
+export async function deleteOperatorEmail(email: string): Promise<OperatorWhitelistItem[]> {
+  const cleanEmail = email.trim().toLowerCase();
+  try {
+    await deleteDoc(doc(db, 'operator_whitelist', cleanEmail));
+    return await fetchOperatorWhitelist();
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `operator_whitelist/${cleanEmail}`);
   }
 }

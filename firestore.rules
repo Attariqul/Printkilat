@@ -29,7 +29,8 @@ service cloud.firestore {
 
     function isOperator() {
       return isBootstrappedAdmin()
-        || (isVerified() && exists(/databases/$(database)/documents/operators/$(request.auth.uid)));
+        || (isVerified() && exists(/databases/$(database)/documents/operators/$(request.auth.uid)))
+        || (isVerified() && exists(/databases/$(database)/documents/operator_whitelist/$(request.auth.token.email)));
     }
 
     function isValidId(id) {
@@ -236,6 +237,15 @@ service cloud.firestore {
         && data.createdAt is timestamp;
     }
 
+    function isValidOperatorWhitelistDoc(data, email) {
+      return data.keys().hasAll(['email', 'name', 'role', 'createdAt'])
+        && data.keys().hasOnly(['email', 'name', 'role', 'createdAt'])
+        && data.email is string && data.email == email
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 100
+        && data.role in ['operator', 'owner']
+        && data.createdAt is timestamp;
+    }
+
     // --- Collection Rules ---
 
     // Connection health check doc (read-only)
@@ -414,6 +424,19 @@ service cloud.firestore {
         && isValidOperatorDoc(incoming())
         && incoming().createdAt == existing().createdAt;
       allow delete: if isBootstrappedAdmin() && isValidId(uid);
+    }
+
+    // Authorized operator email whitelist collection (managed directly from operator dashboard)
+    match /operator_whitelist/{email} {
+      allow get: if isSignedIn() && (request.auth.token.email == email || isOperator());
+      allow list: if isOperator();
+      allow create: if isOperator()
+        && isValidOperatorWhitelistDoc(incoming(), email)
+        && incoming().createdAt == request.time;
+      allow update: if isOperator()
+        && isValidOperatorWhitelistDoc(incoming(), email)
+        && incoming().createdAt == existing().createdAt;
+      allow delete: if isOperator();
     }
   }
 }
