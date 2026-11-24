@@ -226,7 +226,7 @@ export function OperatorPortal({
                   : 'text-orange-50 hover:bg-white/10'
               }`}
             >
-              Petugas
+              Kelola Petugas
             </button>
             <button
               type="button"
